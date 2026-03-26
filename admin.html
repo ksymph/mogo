@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mogo Admin</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="prism-code.js"></script>
+  <style>.prism-code-editor { height: 100%; }</style>
+</head>
+
+<body>
+
+  <div id="login-view">
+    <form id="login-form">
+      <h2>Mogo Admin</h2>
+      <div class="form-field"><input id="api-key" placeholder="" type="password" required autofocus><label>
+          API key
+        </label></div>
+      <button type="submit" class="btn">Access</button>
+    </form>
+  </div>
+
+  <div id="app-view">
+    <div class="sidebar">
+      <div class="icon-btn" onclick="nav('keys')" title="API Keys">
+        <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path
+            d="M10 12C10 14.2091 8.20914 16 6 16C3.79086 16 2 14.2091 2 12C2 9.79086 3.79086 8 6 8C8.20914 8 10 9.79086 10 12ZM10 12H22V15"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M18 12V15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </div>
+      <div class="icon-btn" onclick="nav('collections')" title="Collections">
+        <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M5 12V18C5 18 5 21 12 21C19 21 19 18 19 18V12" stroke="currentColor" stroke-width="2" />
+          <path d="M5 6V12C5 12 5 15 12 15C19 15 19 12 19 12V6" stroke="currentColor" stroke-width="2" />
+          <path d="M12 3C19 3 19 6 19 6C19 6 19 9 12 9C5 9 5 6 5 6C5 6 5 3 12 3Z" stroke="currentColor"
+            stroke-width="2" />
+        </svg>
+      </div>
+      <div class="icon-btn" onclick="nav('routes')" title="Routes">
+        <svg width="32px" height="32px" viewBox="0 0 24 24" stroke-width="1.5" fill="none"
+          xmlns="http://www.w3.org/2000/svg">
+          <path d="M22 10L8 10C0 10 0 21 8 21M22 10L15 3M22 10L15 17" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </div>
+      <div class="icon-btn" onclick="nav('files')" title="Files">
+        <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M7 18H10.5H14" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" />
+          <path d="M7 14H7.5H8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M7 10H8.5H10" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" />
+          <path d="M7 2L16.5 2L21 6.5V19" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" />
+          <path
+            d="M3 20.5V6.5C3 5.67157 3.67157 5 4.5 5H14.2515C14.4106 5 14.5632 5.06321 14.6757 5.17574L17.8243 8.32426C17.9368 8.43679 18 8.5894 18 8.74853V20.5C18 21.3284 17.3284 22 16.5 22H4.5C3.67157 22 3 21.3284 3 20.5Z"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M14 5V8.4C14 8.73137 14.2686 9 14.6 9H18" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </div>
+      <div class="icon-btn" onclick="nav('schedules')" title="Schedules">
+        <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 6L12 12L18 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" />
+          <path
+            d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </div>
+      <div class="icon-btn" onclick="nav('logs')" title="Logs">
+        <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <line x1="8" y1="6" x2="21" y2="6"></line>
+          <line x1="8" y1="12" x2="21" y2="12"></line>
+          <line x1="8" y1="18" x2="21" y2="18"></line>
+          <line x1="3" y1="6" x2="3.01" y2="6"></line>
+          <line x1="3" y1="12" x2="3.01" y2="12"></line>
+          <line x1="3" y1="18" x2="3.01" y2="18"></line>
+        </svg>
+      </div>
+      <div class="icon-btn" onclick="nav('settings')" title="Settings">
+        <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path
+            d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          <path
+            d="M19.6224 10.3954L18.5247 7.7448L20 6L18 4L16.2647 5.48295L13.5578 4.36974L12.9353 2H10.981L10.3491 4.40113L7.70441 5.51596L6 4L4 6L5.45337 7.78885L4.3725 10.4463L2 11V13L4.40111 13.6555L5.51575 16.2997L4 18L6 20L7.79116 18.5403L10.397 19.6123L11 22H13L13.6045 19.6132L16.2551 18.5155C16.6969 18.8313 18 20 18 20L20 18L18.5159 16.2494L19.6139 13.598L21.9999 12.9772L22 11L19.6224 10.3954Z"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </div>
+    </div>
+
+    <div id="sub-sidebar" class="sub-sidebar"></div>
+
+    <div id="main-pane" class="main-pane">
+      <div class="pane-header" id="pane-header"></div>
+      <div class="pane-content" id="pane-content"></div>
+      <div id="selection-popup" class="popup-bar">
+        <button class="btn danger" onclick="deleteSelected()">Delete Selected</button>
+        <button class="btn" onclick="clearSelection()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title"></h3>
+      </div>
+      <div id="modal-body" class="modal-body"></div>
+    </div>
+  </div>
+  <div id="rel-modal" class="modal-overlay" style="z-index: 2000;">
+    <div class="modal" style="max-width: min(640px, 80%);">
+      <div class="modal-header">
+        <h3 id="rel-modal-title"></h3>
+      </div>
+      <div id="rel-modal-body" class="modal-body"></div>
+    </div>
+  </div>
+
+<script>
+  function getSystemTheme() {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+
+  function applyTheme(theme) {
+    // If no argument, read from localStorage, fallback to 'auto'
+    theme = theme || localStorage.getItem('mogo_theme') || 'auto';
+
+    // Determine the actual class to apply
+    let effectiveTheme = theme;
+    if (effectiveTheme === 'auto') {
+      effectiveTheme = getSystemTheme();
+    }
+
+    // Remove any existing theme class and apply the new one
+    document.documentElement.classList.remove('theme-light', 'theme-dark');
+    document.documentElement.classList.add(`theme-${effectiveTheme}`);
+
+    // Store the user's preference (not the resolved theme)
+    localStorage.setItem('mogo_theme', theme);
+  }
+
+  // Run on page load
+  applyTheme();
+
+  // Optional: listen for system preference changes when in 'auto' mode
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (localStorage.getItem('mogo_theme') === 'auto') {
+      applyTheme('auto');
+    }
+  });
+
+    document.addEventListener('click', (e) => {
+      if (e.target.classList.contains('modal-overlay')) {
+        if (e.target.id === 'rel-modal') {
+          closeRelModal();
+        } else if (e.target.id === 'modal') {
+          closeModal();
+        }
+      }
+    });
+    
+    let state = {
+      tab: '', sub: '', data: [], schema:[], selected: new Set(),
+      collections: [], keys: [], crons:[], settings: null,
+      sort: { col: 'id', asc: true }
+    };
+
+    // ----- Sorting Utility -----
+    function handleSort(col) {
+      if (state.sort.col === col) {
+        state.sort.asc = !state.sort.asc;
+      } else {
+        state.sort.col = col;
+        state.sort.asc = true;
+      }
+      if (state.tab === 'collections') renderCollectionTable();
+      if (state.tab === 'keys') renderKeysTable();
+      if (state.tab === 'schedules') renderCronsTable();
+    }
+
+    function sortData(arr) {
+      let { col, asc } = state.sort;
+      return arr.sort((a, b) => {
+        let va = a[col];
+        let vb = b[col];
+        if (va === vb) return 0;
+        if (va == null) return asc ? -1 : 1;
+        if (vb == null) return asc ? 1 : -1;
+        if (typeof va === 'string' && typeof vb === 'string') {
+          return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+        }
+        return asc ? (va < vb ? -1 : 1) : (va > vb ? -1 : 1);
+      });
+    }
+
+    function th(col, label) {
+      let arrow = state.sort.col === col ? (state.sort.asc ? ' ▲' : ' ▼') : '';
+      return `<th onclick="handleSort('${col}')" class="sortable-header">${label || col}${arrow}</th>`;
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && document.getElementById('modal').style.display === 'flex') {
+        closeModal();
+      }
+    });
+
+    function esc(s) { return s.replace(/'/g, "\\'"); }
+
+    async function api(path, opts = {}) {
+      opts.headers = { ...opts.headers, "Content-Type": "application/json" };
+      if (opts.body && typeof opts.body !== 'string') opts.body = JSON.stringify(opts.body);
+      const res = await fetch(`/api${path}`, opts);
+      if (res.status === 401) { showLogin(); throw new Error("Unauthorized"); }
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+
+    // ---------- Drag and Drop List Reordering logic ----------
+    let dragInfo = null;
+    window.startDrag = function (e, index) {
+      if (e.button !== 0) return; // Allow only left click
+      e.preventDefault();
+
+      const container = document.getElementById('schema-fields-container');
+      const row = e.target.closest('.schema-row');
+      const rect = row.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+
+      const placeholder = document.createElement('div');
+      placeholder.className = 'hbox schema-row placeholder';
+      placeholder.style.height = rect.height + 'px';
+      placeholder.style.border = '2px dashed var(--bg-3)';
+      placeholder.style.borderRadius = '4px';
+      placeholder.style.boxSizing = 'border-box';
+
+      row.style.position = 'absolute';
+      row.style.zIndex = '1000';
+      row.style.width = rect.width + 'px';
+      row.style.top = (rect.top - containerRect.top) + 'px';
+      row.style.left = (rect.left - containerRect.left) + 'px';
+      row.style.boxShadow = 'var(--shadow)';
+      row.style.background = 'var(--card-bg)'; // Maintain visual block integrity
+
+      container.insertBefore(placeholder, row.nextSibling);
+
+      const startY = e.clientY;
+      const startTop = rect.top - containerRect.top;
+
+      dragInfo = { row, placeholder, container, startY, startTop, index };
+
+      document.addEventListener('pointermove', window.onDragMove);
+      document.addEventListener('pointerup', window.onDragEnd);
+    };
+
+    window.onDragMove = function (e) {
+      if (!dragInfo) return;
+      e.preventDefault();
+      const { row, placeholder, container, startY, startTop } = dragInfo;
+
+      // Update visual positioning relative to drag
+      const dy = e.clientY - startY;
+      row.style.top = (startTop + dy) + 'px';
+
+      const siblings = Array.from(container.children).filter(c => c !== row && c !== placeholder && c.classList.contains('schema-row'));
+      const rowCenter = e.clientY;
+
+      let inserted = false;
+      for (let i = 0; i < siblings.length; i++) {
+        const rect = siblings[i].getBoundingClientRect();
+        if (rowCenter < rect.top + rect.height / 2) {
+          container.insertBefore(placeholder, siblings[i]);
+          inserted = true;
+          break;
+        }
+      }
+      if (!inserted) {
+        container.appendChild(placeholder);
+      }
+    };
+
+    window.onDragEnd = function (e) {
+      if (!dragInfo) return;
+      document.removeEventListener('pointermove', window.onDragMove);
+      document.removeEventListener('pointerup', window.onDragEnd);
+
+      const { row, placeholder, container, index } = dragInfo;
+
+      // Measure placeholder's final DOM location to translate to schema array offset
+      const siblingsAndPlaceholder = Array.from(container.children).filter(c => c.classList.contains('schema-row') && c !== row);
+      const newIndex = siblingsAndPlaceholder.indexOf(placeholder);
+
+      row.style.position = '';
+      row.style.zIndex = '';
+      row.style.width = '';
+      row.style.top = '';
+      row.style.left = '';
+      row.style.boxShadow = '';
+      row.style.background = '';
+
+      container.insertBefore(row, placeholder);
+      placeholder.remove();
+
+      // Reorder items in state tracking variable
+      if (newIndex !== -1 && newIndex !== index) {
+        const item = window._tempSchema.splice(index, 1)[0];
+        window._tempSchema.splice(newIndex, 0, item);
+        renderSchemaModal();
+      }
+
+      dragInfo = null;
+    };
+
+
+    // ---------- logs ----------
+    async function loadLogs(level = '', offset = 0) {
+      document.getElementById('pane-header').innerHTML = `
+        <h2>Logs</h2>
+        <div style="display:flex; gap: 8px;">
+          <select id="log-level-filter" onchange="loadLogs(this.value, 0)">
+            <option value="">All Levels</option>
+            <option value="info" ${level === 'info' ? 'selected' : ''}>Info</option>
+            <option value="warn" ${level === 'warn' ? 'selected' : ''}>Warn</option>
+            <option value="error" ${level === 'error' ? 'selected' : ''}>Error</option>
+          </select>
+          <button class="btn danger" onclick="clearLogs()">Clear All Logs</button>
+        </div>
+      `;
+
+      const res = await api(`/logs?level=${level}`);
+      const logs = res.logs ||[];
+      state.logs = logs; // save for viewing details
+
+      let html = `<table class="data-table"><thead><tr>
+        <th>ID</th><th>Timestamp</th><th>Level</th><th>Origin</th><th>Script</th><th>Message</th>
+      </tr></thead><tbody>`;
+
+      if (logs.length === 0) {
+        html += `<tr style="box-shadow: none;"><td colspan="6" style="text-align:center; padding: 2rem; cursor: default;">No logs found.</td></tr>`;
+      } else {
+        logs.forEach((l, idx) => {
+          let badgeColor = l.level === 'error' ? 'var(--fail)' : (l.level === 'warn' ? 'var(--warn)' : 'var(--success)');
+          let shortMsg = l.message ? (l.message.length > 60 ? l.message.substring(0, 60) + '...' : l.message) : '';
+          shortMsg = shortMsg.replace(/</g, "&lt;");
+          html += `<tr style="cursor:pointer" onclick="viewLogDetail(${idx})">
+            <td>${l.id}</td>
+            <td style="white-space:nowrap">${new Date(l.timestamp).toLocaleString()}</td>
+            <td><span style="background:${badgeColor};">${l.level}</span></td>
+            <td>${l.origin || ''}</td>
+            <td>${l.script_path || ''}</td>
+            <td style="max-width:300px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><code>${shortMsg}</code></td>
+          </tr>`;
+        });
+      }
+      html += `</tbody></table>`;
+
+
+      document.getElementById('pane-content').innerHTML = html;
+    }
+
+    async function clearLogs() {
+      if (!confirm("Are you sure you want to delete ALL logs? This cannot be undone.")) return;
+      await api('/logs', { method: 'DELETE' });
+      loadLogs(document.getElementById('log-level-filter').value, 0);
+    }
+
+    function viewLogDetail(idx) {
+      let l = state.logs[idx];
+      document.getElementById('modal-title').innerText = `Log #${l.id}`;
+      document.getElementById('modal-body').innerHTML = `
+        <div class="log">
+        <span><b>Timestamp</b>: ${new Date(l.timestamp).toLocaleString()}</span>
+        <span><b>Level</b>:       ${l.level}</span>
+        <span><b>Origin</b>:      ${l.origin}</span>
+        <span><b>Script</b>:      ${l.script_path}</span>
+        <hr>
+        <div>${l.message ? l.message.replace(/</g, "&lt;") : ''}</div>
+        </div>
+      `;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    async function init() {
+      const params = new URLSearchParams(window.location.search);
+      const autoKey = params.get('key');
+      if (autoKey) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        try { await api('/auth/login', { method: 'POST', body: { api_key: autoKey } }); }
+        catch (e) { /* ignore auto-login failure */ }
+      }
+
+      try {
+        await api('/auth/check');
+        state.settings = await api('/settings');
+        showApp();
+      } catch { showLogin(); }
+    }
+
+    document.getElementById('login-form').onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        await api('/auth/login', { method: 'POST', body: { api_key: document.getElementById('api-key').value } });
+        state.settings = await api('/settings');
+        showApp();
+      } catch (e) { alert("Invalid API Key"); }
+    };
+
+    function showLogin() { document.getElementById('app-view').style.display = 'none'; document.getElementById('login-view').style.display = 'flex'; }
+    function showApp() { document.getElementById('login-view').style.display = 'none'; document.getElementById('app-view').style.display = 'flex'; nav('collections'); }
+
+    function nav(tab) {
+      state.tab = tab; state.sub = ''; state.search = '';
+      state.sort = { col: 'id', asc: true };
+      document.querySelectorAll('.icon-btn').forEach(e => e.classList.remove('active'));
+
+      // Automatically select appropriate icon if calling nav('...') programmatically or via click
+      let iconBtn = document.querySelector(`.icon-btn[onclick="nav('${tab}')"]`);
+      if (iconBtn) iconBtn.classList.add('active');
+
+      document.getElementById('sub-sidebar').style.display =['collections', 'routes', 'files', 'schedules', 'settings'].includes(tab) ? 'flex' : 'none';
+      document.getElementById('pane-header').style.display = '';
+      document.getElementById('pane-header').innerHTML = '';
+      document.getElementById('pane-content').innerHTML = '';
+      document.getElementById('selection-popup').classList.remove('show');
+
+      if (tab === 'collections') loadCollections();
+      if (tab === 'keys') loadKeys();
+      if (tab === 'settings') loadSettings('admin');
+      if (tab === 'logs') loadLogs();
+      if (tab === 'routes' || tab === 'files' || tab === 'schedules') loadFiles(tab);
+    }
+
+    // ---------- collections ----------
+    async function loadCollections() {
+      const cols = await api('/collections');
+      state.collections = cols;
+      let html = cols.map(c => `<div class="sub-item ${c.name === state.sub ? 'active' : ''}" onclick="viewCollection('${c.name}')">${c.name}</div>`).join('');
+      html += `<button class="btn btn-block" onclick="editSchemaModal()">+ New Collection</button>`;
+      document.getElementById('sub-sidebar').innerHTML = html;
+
+      if (cols.length > 0 && !state.sub) {
+        viewCollection(cols[0].name);
+      } else if (cols.length === 0) {
+        document.getElementById('pane-header').innerHTML = '<h2>Collections</h2>';
+        document.getElementById('pane-content').innerHTML = '<p style="padding:1.5rem">No collections found.</p>';
+      }
+    }
+
+    async function viewCollection(name) {
+      state.sub = name;
+      state.sort = { col: 'id', asc: true };
+      document.querySelectorAll('.sub-sidebar .sub-item').forEach(el => el.classList.remove('active'));
+      const subItem = Array.from(document.querySelectorAll('.sub-sidebar .sub-item')).find(el => el.innerText === name);
+      if (subItem) subItem.classList.add('active');
+
+      const col = state.collections.find(c => c.name === name);
+      if (!col) return;
+
+      state.schema = col.schema ||[];
+      const res = await api(`/collections/${name}?search=${encodeURIComponent(state.search || '')}`);
+      state.data = res.items ||[];
+
+      state.selected.clear();
+      renderCollectionTable();
+    }
+
+    function renderCollectionTable() {
+      const cols =['id', ...state.schema.map(s => s.name)];
+      document.getElementById('pane-header').innerHTML = `
+      <h2>${state.sub}</h2>
+      <div class="hbox">
+        <div class="form-field" style="margin:0; width:250px"><input type="text" id="coll-search" placeholder=" " value="${state.search || ''}" oninput="debounceSearch(this.value)"><label>Search (or field:value)...</label></div>
+        <button class="btn danger" onclick="deleteCollection('${state.sub}')">Delete Collection</button>
+        <button class="btn" onclick="editSchemaModal('${state.sub}')">Edit Schema</button>
+        <button class="btn" onclick="itemModal()">+ Item</button>
+      </div>
+    `;
+      let ths = cols.map(c => th(c, c)).join('');
+
+      let sortedData = sortData([...state.data]);
+
+      let rows = sortedData.map(d => `
+      <tr onclick="itemModal('${d.id}')">
+        <td onclick="event.stopPropagation()"><input type="checkbox" onchange="toggleSelect('${d.id}', this.checked)" ${state.selected.has(String(d.id)) ? 'checked' : ''}></td>
+        ${cols.map(c => {
+        let val = d[c];
+        let sc = state.schema.find(s => s.name === c);
+        if (sc && sc.type === 'bool') {
+          return `<td>${(val === true || val === 1 || val === 'true') ? 'true' : 'false'}</td>`;
+        }
+        return `<td>${val !== undefined && val !== null ? val : ''}</td>`;
+      }).join('')}
+      </tr>
+    `).join('');
+
+
+      document.getElementById('pane-content').innerHTML = `
+      <div style="overflow-x:auto">
+        <table class="data-table">
+          <thead><tr><th style="width:30px"></th>${ths}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+    }
+
+    function toggleSelect(id, checked) {
+      let strId = String(id);
+      checked ? state.selected.add(strId) : state.selected.delete(strId);
+      document.getElementById('selection-popup').classList.toggle('show', state.selected.size > 0);
+    }
+
+    function clearSelection() {
+      state.selected.clear();
+      document.getElementById('selection-popup').classList.remove('show');
+      renderCollectionTable();
+    }
+
+    let searchTimeout;
+    function debounceSearch(val) {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        state.search = val;
+        viewCollection(state.sub);
+        setTimeout(() => {
+          let inp = document.getElementById('coll-search');
+          if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+        }, 50);
+      }, 300);
+    }
+
+    async function deleteSelected() {
+      await api(`/collections/${state.sub}?ids=${Array.from(state.selected).join(',')}`, { method: 'DELETE' });
+      clearSelection();
+      viewCollection(state.sub);
+    }
+
+    async function deleteCollection(name) {
+      if (confirm(`Are you sure you want to delete the collection '${name}' and all its data? This action cannot be undone.`)) {
+        await api(`/collections/${name}`, { method: 'DELETE' });
+        state.sub = '';
+        document.getElementById('pane-header').innerHTML = '';
+        document.getElementById('pane-content').innerHTML = '';
+        loadCollections();
+      }
+    }
+
+    function itemModal(id = null) {
+      const item = id ? state.data.find(d => d.id == id) : {};
+      let html = ``;
+      state.schema.forEach(f => {
+        if (f.name === 'id' || f.name === 'created' || f.name === 'updated') return;
+        let val = item[f.name] !== undefined && item[f.name] !== null ? item[f.name] : '';
+
+        if (f.type === 'bool') {
+          html += `<div class="form-check"><label><span>${f.name}</span> <input type="checkbox" id="f_${f.name}" ${val === true || val === 1 || val === 'true' ? 'checked' : ''}></label></div>`;
+        } else if (f.type === 'number') {
+          html += `<div class="form-field"><input type="number" step="any" id="f_${f.name}" value="${val}" placeholder=" "><label>${f.name}</label></div>`;
+        } else if (f.type && f.type.startsWith('relation:')) {
+          let target = f.type.split(':')[1];
+          html += `
+            <div class="hbox">
+              <div class="form-field" style="flex:1">
+                <input type="text" id="f_${f.name}" value="${val}" placeholder="" readonly>
+                <label>${f.name}</label>
+              </div>
+              <button class="btn secondary" onclick="openRelSelect('${f.name}', '${target}')">Select: ${target}</button>
+            </div>
+            
+          `;
+        } else {
+          html += `<div class="form-field"><input type="text" id="f_${f.name}" value="${val}" placeholder=" "><label>${f.name}</label></div>`;
+        }
+      });
+
+      document.getElementById('modal-title').innerText = `${id ? 'Edit' : 'New'} Item`;
+      document.getElementById('modal-body').innerHTML = html + `<div class="hbox"><button class="btn" onclick="saveItem(${id})">Save</button> <button class="btn danger" onclick="closeModal()">Cancel</button></div>`;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    async function saveItem(id) {
+      let payload = {};
+      state.schema.forEach(f => {
+        if (f.name === 'id' || f.name === 'created' || f.name === 'updated') return;
+        let el = document.getElementById(`f_${f.name}`);
+        if (el) {
+          if (f.type === 'bool') {
+            payload[f.name] = el.checked;
+          } else if (f.type === 'number') {
+            payload[f.name] = el.value !== '' ? parseFloat(el.value) : null;
+          } else {
+            payload[f.name] = el.value;
+          }
+        }
+      });
+      await api(`/collections/${state.sub}${id ? '/' + id : ''}`, { method: id ? 'PUT' : 'POST', body: payload });
+      closeModal();
+      viewCollection(state.sub);
+    }
+
+    function editSchemaModal(name = '') {
+      const isNew = !name;
+      let schema = isNew ?[] : state.schema;
+      window._tempSchema = [...schema];
+      window._tempColName = name || '';
+
+      function render() {
+        if (document.getElementById('col-name')) window._tempColName = document.getElementById('col-name').value;
+        let html = ``;
+        if (isNew) html += `<div class="form-field"><input id="col-name" placeholder="" required value="${window._tempColName}"><label>Collection name</label></div>`;
+
+        html += `<div id="schema-fields-container" style="position:relative; display:flex; flex-direction:column; gap:8px;">`;
+        html += window._tempSchema.map((f, i) => {
+          let baseType = f.type;
+          let relTarget = '';
+          if (f.type && f.type.startsWith('relation:')) {
+            baseType = 'relation';
+            relTarget = f.type.split(':')[1];
+          }
+          let allCols = state.collections.map(c => `<option value="${c.name}" ${c.name === relTarget ? 'selected' : ''}>${c.name}</option>`).join('');
+
+          return `
+        <div class="hbox schema-row" data-index="${i}" style="background: var(--card-bg)">
+          <div class="handle" style="cursor:grab" onpointerdown="startDrag(event, ${i})">⣿</div>
+          <div class="form-field" style="flex:1"><input value="${f.name}" onchange="_tempSchema[${i}].name=this.value" ${f.name === 'id' ? 'disabled' : ''} placeholder=" "><label>Field name</label></div>
+          <select onchange="if(this.value==='relation'){ _tempSchema[${i}].type='relation:'+(state.collections[0]?state.collections[0].name:''); } else { _tempSchema[${i}].type=this.value }; renderSchemaModal()" ${f.name === 'id' ? 'disabled' : ''}>
+            <option value="string" ${baseType === 'string' ? 'selected' : ''}>String</option>
+            <option value="number" ${baseType === 'number' ? 'selected' : ''}>Number</option>
+            <option value="bool" ${baseType === 'bool' ? 'selected' : ''}>Bool</option>
+            <option value="relation" ${baseType === 'relation' ? 'selected' : ''}>Relation</option>
+          </select>
+          ${baseType === 'relation' ? `<select onchange="_tempSchema[${i}].type='relation:'+this.value">${allCols}</select>` : ''}
+          <button class="btn danger" style="width: 1.5rem; height: 1.5rem; padding: 0.15rem 0 0 0;" ${f.name === 'id' ? 'disabled' : 'onclick="_tempSchema.splice(' + i + ',1); renderSchemaModal()"'}>✕</button>
+        </div>
+      `}).join('');
+        html += `</div>`;
+        html += `<div style="margin-top: 1rem;"><button class="btn" onclick="_tempSchema.push({name:'', type:'string'}); renderSchemaModal()">+ Add field</button></div>
+      <div style="margin-top: 1rem;"><button class="btn" onclick="saveSchema('${name}')">Save collection</button> <button class="btn danger" onclick="closeModal()">Cancel</button></div>`;
+
+        document.getElementById('modal-title').innerText = `${isNew ? 'New' : 'Edit'} Collection`;
+        document.getElementById('modal-body').innerHTML = html;
+        document.getElementById('modal').style.display = 'flex';
+      }
+      window.renderSchemaModal = render;
+      render();
+    }
+
+    async function saveSchema(name) {
+      let schema = window._tempSchema.filter(f => f.name.trim() !== '');
+      let targetName = name;
+      if (!name) {
+        targetName = document.getElementById('col-name').value;
+        await api(`/collections`, { method: 'POST', body: { name: targetName, schema } });
+      } else {
+        await api(`/collections/${name}`, { method: 'PUT', body: { schema } });
+      }
+      closeModal();
+      await loadCollections();
+      if (targetName) viewCollection(targetName);
+    }
+
+    // ---------- API keys ----------
+    async function loadKeys() {
+      document.getElementById('pane-header').innerHTML = `<h2>API Keys</h2><button class="btn" onclick="keyModal()">+ New Key</button>`;
+      state.keys = await api('/keys');
+      renderKeysTable();
+    }
+
+    function renderKeysTable() {
+      let sorted = sortData([...state.keys]);
+      let rows = sorted.map(k => `<tr onclick="viewKeyModal(${k.id})">
+      <td>${k.name}</td><td><code>${k.key}</code></td><td>${k.created}</td>
+      <td style="text-align:right"><span class="clickable ml-2" onclick="event.stopPropagation(); deleteKey(${k.id})" title="Delete Key">✕</span></td>
+    </tr>`).join('');
+      document.getElementById('pane-content').innerHTML = `
+      <table class="data-table"><thead><tr>
+        ${th('name', 'Name')}
+        ${th('key', 'Key')}
+        ${th('created', 'Created')}
+        <th></th>
+      </tr></thead><tbody>${rows}</tbody></table>`;
+    }
+
+    function viewKeyModal(id) {
+      const k = state.keys.find(x => x.id === id);
+      if (!k) return;
+      let html = `
+      <div class="detail-box">
+        <div><strong>Name:</strong> ${k.name}</div>
+        <div><strong>Key:</strong> <code>${k.key}</code></div>
+        <div><strong>Created:</strong> ${k.created}</div>
+      </div>
+      <h4>Permissions</h4>
+      <pre class="code-block">${JSON.stringify(k.permissions, null, 2)}</pre>
+      <button class="btn" onclick="closeModal()">Close</button>`;
+      openModal("API Key Details", html);
+    }
+
+    window.toggleColPerms = function (checked) {
+      let block = document.getElementById('col-perms-block');
+      if (checked) {
+        block.classList.add('disabled');
+        block.querySelectorAll('input').forEach(i => i.checked = false);
+      } else {
+        block.classList.remove('disabled');
+      }
+    };
+
+    async function keyModal() {
+      let cols = await api('/collections');
+      let colRows = cols.map(c => `
+    <div>
+        <span>${c.name}</span>
+        <label><input type="checkbox" id="pk_i_${c.name}"></label>
+        <label><input type="checkbox" id="pk_s_${c.name}"></label>
+        </div>
+    `).join('');
+
+      let html = `<div class="form-field"><input id="k-name" placeholder=" "><label>Key name</label></div>
+      <h4>Permissions</h4>
+      <div class="form-block">
+              <label class="form-check"><span>Routes</span><input type="checkbox" id="pk_routes"></label>
+              <label class="form-check"><span>Schedules</span><input type="checkbox" id="pk_schedules"></label>
+              <label class="form-check"><span>Files</span><input type="checkbox" id="pk_files"></label>
+              <label class="form-check"><span>Settings</span><input type="checkbox" id="pk_settings"></label>
+              <label class="form-check"><span style="color:var(--danger)">Keys</span><input type="checkbox" id="pk_keys"></label>
+              <label class="form-check"><span style="color:var(--danger)">All Collections</span><input type="checkbox" id="pk_all_cols" onchange="toggleColPerms(this.checked)"></label>
+              </div>
+        <hr>
+        <div class="form-block collection-perms" id="col-perms-block">
+        <div class="collection-perms-header"><h5>Collection</h5><span>Items</span><span>Schema</span></div>
+        ${colRows}
+        </div>
+      <div class="hbox"><button class="btn" onclick="saveKey()">Create Key</button> <button class="btn danger" onclick="closeModal()">Cancel</button></div>`;
+      openModal("New API Key", html);
+    }
+
+    async function saveKey() {
+      let perms = {};
+      perms.collections = {};
+      if (document.getElementById('pk_all_cols').checked) {
+        perms.collections["*"] = ["item", "schema"];
+      } else {
+        document.querySelectorAll('[id^="pk_i_"]').forEach(el => {
+          let name = el.id.substring(5);
+          if (el.checked || document.getElementById(`pk_s_${name}`).checked) {
+            if (!perms.collections[name]) perms.collections[name] =[];
+            if (el.checked) perms.collections[name].push("item");
+            if (document.getElementById(`pk_s_${name}`).checked) perms.collections[name].push("schema");
+          }
+        });
+      }["routes", "files", "schedules", "settings", "keys"].forEach(k => { if (document.getElementById(`pk_${k}`).checked) perms[k] = true; });
+
+      let name = document.getElementById('k-name').value;
+      await api('/keys', { method: 'POST', body: { name, permissions: perms } });
+      closeModal();
+      loadKeys();
+    }
+
+    async function deleteKey(id) { if (confirm("Delete Key?")) { await api(`/keys?id=${id}`, { method: 'DELETE' }); loadKeys(); } }
+
+    // ---------- settings ----------
+    window.updateBackupCronUI = function () {
+      let mode = document.querySelector('input[name="bkp_cron_mode"]:checked').value;
+      document.getElementById('bkp-cron-raw-sec').style.display = (mode === 'raw') ? 'block' : 'none';
+      document.getElementById('bkp-cron-interval-sec').style.display = (mode === 'interval') ? 'block' : 'none';
+    }
+
+window.saveEditorSettings = function() {
+  localStorage.setItem('mogo_editor_theme', document.querySelector('input[name="ed_theme"]:checked').value);
+
+  // Read indent type from radio group
+  const indentType = document.querySelector('input[name="ed_indent_type"]:checked').value;
+  const insertSpaces = indentType === 'spaces';
+  localStorage.setItem('mogo_editor_insertSpaces', insertSpaces);
+
+  localStorage.setItem('mogo_editor_tabSize', document.getElementById('ed_tabSize').value);
+  localStorage.setItem('mogo_editor_wordWrap', document.getElementById('ed_wordWrap').checked);
+};
+
+    async function triggerBackup() {
+      let btn = document.getElementById('btn-backup-now');
+      btn.disabled = true;
+      btn.innerText = "Backing up...";
+      try {
+        await api('/backup', { method: 'POST' });
+        alert("Backup completed successfully.");
+      } catch (e) {
+        alert("Backup failed: " + e.message);
+      }
+      btn.disabled = false;
+      btn.innerText = "Backup Now";
+    }
+
+async function loadSettings(sub = 'admin') {
+  state.sub = sub;
+
+  document.getElementById('sub-sidebar').innerHTML = `
+    <div class="sub-item ${sub === 'admin' ? 'active' : ''}" onclick="loadSettings('admin')">Admin UI Settings</div>
+    <div class="sub-item ${sub === 'app' ? 'active' : ''}" onclick="loadSettings('app')">App Settings</div>
+  `;
+
+  // Remove pane-header display
+  document.getElementById('pane-header').style.display = 'none';
+
+  if (sub === 'admin') {
+    let theme = localStorage.getItem('mogo_theme') || 'auto';
+    let edTheme = localStorage.getItem('mogo_editor_theme') || 'auto';
+    let edTabSize = localStorage.getItem('mogo_editor_tabSize') || '3';
+    let edInsertSpaces = localStorage.getItem('mogo_editor_insertSpaces') === 'true';
+    let edWordWrap = localStorage.getItem('mogo_editor_wordWrap') !== 'false';
+
+    document.getElementById('pane-content').innerHTML = `
+      <div class="settings-form">
+        <div class="modal">
+          <h3>Theme</h3>
+          <div class="radio-group">
+            <label>
+              <input type="radio" name="admin_theme" value="auto" ${theme === 'auto' ? 'checked' : ''} onchange="applyTheme(this.value)"> Auto (System)
+            </label>
+            <label>
+              <input type="radio" name="admin_theme" value="light" ${theme === 'light' ? 'checked' : ''} onchange="applyTheme(this.value)"> Light
+            </label>
+            <label>
+              <input type="radio" name="admin_theme" value="dark" ${theme === 'dark' ? 'checked' : ''} onchange="applyTheme(this.value)"> Dark
+            </label>
+          </div>
+        </div>
+        <div class="modal">
+          <h3>Code Editor</h3>
+          <div>
+            <div class="hint">Editor Theme</div>
+            <div class="radio-group">
+              <label>
+                <input type="radio" name="ed_theme" value="auto" ${edTheme === 'auto' ? 'checked' : ''} onchange="saveEditorSettings()"> Auto (Admin theme)
+              </label>
+              <label>
+                <input type="radio" name="ed_theme" value="light" ${edTheme === 'light' ? 'checked' : ''} onchange="saveEditorSettings()"> Light
+              </label>
+              <label>
+                <input type="radio" name="ed_theme" value="dark" ${edTheme === 'dark' ? 'checked' : ''} onchange="saveEditorSettings()"> Dark
+              </label>
+            </div>
+          </div>
+          <div class="form-field"><input type="number" id="ed_tabSize" value="${edTabSize}" onchange="saveEditorSettings()" placeholder=" "><label>Tab Size</label></div>
+          <div>
+            <div class="hint">Indent Type</div>
+            <div class="radio-group">
+              <label>
+                <input type="radio" name="ed_indent_type" value="tabs" ${!edInsertSpaces ? 'checked' : ''} onchange="saveEditorSettings()"> Tabs
+              </label>
+              <label>
+                <input type="radio" name="ed_indent_type" value="spaces" ${edInsertSpaces ? 'checked' : ''} onchange="saveEditorSettings()"> Spaces
+              </label>
+            </div>
+          </div>
+          <div class="form-check"><label><span>Word Wrap</span> <input type="checkbox" id="ed_wordWrap" ${edWordWrap ? 'checked' : ''} onchange="saveEditorSettings()"></label></div>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  // App settings logic
+  const s = await api('/settings');
+  state.settings = s;
+
+  let mode = 'disabled';
+  let bkpD = '', bkpH = '', bkpM = '', bkpS = '';
+  if (s.backup_sched && s.backup_sched !== 'Disabled') {
+    if (s.backup_sched_meta) {
+      try { let meta = JSON.parse(s.backup_sched_meta); mode = meta.mode; bkpD = meta.d || ''; bkpH = meta.h || ''; bkpM = meta.m || ''; bkpS = meta.s || ''; } catch (e) { }
+    } else mode = 'raw';
+  }
+
+  document.getElementById('pane-content').innerHTML = `
+    <div class="settings-form" oninput="document.getElementById('btn-save-settings').disabled = false; window.updateBackupCronUI && window.updateBackupCronUI()">
+      
+      <div class="modal">
+        <h3>Server</h3>
+        <div class="form-field">
+          <input type="number" id="s-port" value="${s.port || 8080}" placeholder=" " min="1" max="65535">
+          <label>Port</label>
+        </div>
+        <div class="hint">Restart the server for port changes to take effect.</div>
+      </div>
+
+      <div class="modal">
+        <h3>Paths</h3>
+        <div class="form-field">
+          <input id="s-data" value="${s.data_path || ''}" placeholder="" required>
+          <label>Data</label>
+        </div>
+        <div class="form-field">
+          <input id="s-routes" value="${s.routes_path || ''}" placeholder="">
+          <label>Routes</label>
+        </div>
+        <div class="form-field">
+          <input id="s-schedules" value="${s.schedules_path || ''}" placeholder="">
+          <label>Scheduled scripts</label>
+        </div>
+        <div class="form-field">
+          <input id="s-files" value="${s.files_path || ''}" placeholder="">
+          <label>Files</label>
+        </div>
+      </div>
+      
+      <div class="modal">
+        <h3>Logs</h3>
+        <div class="form-field">
+          <input type="number" id="s-log-ret" value="${s.log_retention_days || 30}" placeholder=" ">
+          <label>Keep for (days)</label>
+        </div>
+      </div>
+
+      <div class="modal">
+        <h3>Backups</h3>
+        <div class="form-field">
+          <input id="s-bkp-dir" value="${s.backup_dest_dir || 'data/backups'}" placeholder=" ">
+          <label>Backups directory</label>
+        </div>
+
+        <div>
+          <div class="hint">Back up...</div>
+          <div class="radio-group" style="gap:0.5rem;">
+            <label><input type="radio" name="bkp_scope" value="db" ${!s.backup_full ? 'checked' : ''}> Only Collections</label>
+            <label><input type="radio" name="bkp_scope" value="all" ${s.backup_full ? 'checked' : ''}> Everything (data, scripts, files, etc.)</label>
+          </div>
+        </div>
+
+        <div>
+          <div class="hint">Schedule Backups</div>
+          <div class="radio-group">
+            <label><input type="radio" name="bkp_cron_mode" oninput="window.updateBackupCronUI()" value="interval" ${mode === 'interval' ? 'checked' : ''}> Run every...</label>
+            <label><input type="radio" name="bkp_cron_mode" oninput="window.updateBackupCronUI()" value="raw" ${mode === 'raw' ? 'checked' : ''}> Cron</label>
+            <label><input type="radio" name="bkp_cron_mode" oninput="window.updateBackupCronUI()" value="disabled" ${mode === 'disabled' ? 'checked' : ''}> Disabled</label>
+          </div>
+        </div>
+
+        <div id="bkp-cron-raw-sec" style="display:${mode === 'raw' ? 'block' : 'none'};">
+          <div class="form-field"><input id="s-bkp-sch" value="${s.backup_sched && s.backup_sched !== 'Disabled' && mode === 'raw' ? s.backup_sched : '0 0 * * * *'}" placeholder=" "><label>Schedule (cron)</label></div>
+        </div>
+
+        <div id="bkp-cron-interval-sec" style="display:${mode === 'interval' ? 'block' : 'none'};">
+          <div style="display: flex; gap: 8px;">
+            <div class="form-field"><input type="number" id="s-bkp-d" min="1" value="${bkpD}" placeholder=" "><label>Days</label></div>
+            <div class="form-field"><input type="number" id="s-bkp-h" min="1" value="${bkpH}" placeholder=" "><label>Hours</label></div>
+            <div class="form-field"><input type="number" id="s-bkp-m" min="1" value="${bkpM}" placeholder=" "><label>Mins</label></div>
+            <div class="form-field"><input type="number" id="s-bkp-s" min="1" value="${bkpS}" placeholder=" "><label>Secs</label></div>
+          </div>
+        </div>
+
+        <div class="hbox">
+          <button id="btn-backup-now" class="btn" style="flex:1" onclick="triggerBackup()">Backup Now</button>
+          <button class="btn secondary" style="flex:1" onclick="window.location.href='/api/backup'">Download Backup</button>
+        </div>
+      </div>
+
+      <div class="modal">
+        <h3>Security</h3>
+        <div class="form-check"><label><span>Allow Unsafe Lua</span><input type="checkbox" id="set_unsafe_lua" ${s.unsafe_lua  ? 'checked' : ''}></label></div>
+        <div class="hint" style="margin-top: -1em;">Give Lua scripts access to os, io, and debug libraries</div>
+        <h5>CORS & Rate Limiting</h5>
+        <div class="form-field">
+          <input id="s-origins" value="${s.allowed_origins || ''}" placeholder=" ">
+          <label>Allowed Origins (e.g. *, http://localhost:3000)</label>
+        </div>
+        <div class="hbox">
+          <div class="form-field"><input type="number" id="s-pub-rps" value="${s.rate_limit_rps || 50}" placeholder=" "><label>Public RPS</label></div>
+          <div class="form-field"><input type="number" id="s-pub-burst" value="${s.rate_limit_burst || 100}" placeholder=" "><label>Public Burst</label></div>
+        </div>
+        <div class="hbox">
+          <div class="form-field"><input type="number" id="s-adm-rps" value="${s.admin_rate_limit_rps || 10}" placeholder=" "><label>Admin RPS</label></div>
+          <div class="form-field"><input type="number" id="s-adm-burst" value="${s.admin_rate_limit_burst || 20}" placeholder=" "><label>Admin Burst</label></div>
+        </div>
+        <div class="hint">Set limits to 0 to disable rate limiting for that scope.</div>
+      </div>
+
+      <div style="padding-top: 1rem;">
+        <button id="btn-save-settings" class="btn" style="width:100%" disabled onclick="saveSettings()">Save changes</button>
+      </div>
+    </div>`;
+}
+
+    async function saveSettings() {
+      let mode = document.querySelector('input[name="bkp_cron_mode"]:checked').value;
+      let schedule = 'Disabled';
+      let meta = { mode: mode };
+
+      if (mode === 'raw') {
+        schedule = document.getElementById('s-bkp-sch').value;
+      } else if (mode === 'interval') {
+        let d = document.getElementById('s-bkp-d').value;
+        let h = document.getElementById('s-bkp-h').value;
+        let m = document.getElementById('s-bkp-m').value;
+        let s = document.getElementById('s-bkp-s').value;
+        if (d) meta.d = d;
+        if (h) meta.h = h;
+        if (m) meta.m = m;
+        if (s) meta.s = s;
+        schedule = "Interval";
+      }
+
+      let payload = {
+        port: parseInt(document.getElementById('s-port').value, 10) || 8080,
+        data_path: document.getElementById('s-data').value,
+        routes_path: document.getElementById('s-routes').value,
+        schedules_path: document.getElementById('s-schedules').value,
+        files_path: document.getElementById('s-files').value,
+        backup_dest_dir: document.getElementById('s-bkp-dir').value,
+        backup_full: document.querySelector('input[name="bkp_scope"]:checked').value === 'all',
+        backup_sched: schedule,
+        backup_sched_meta: JSON.stringify(meta),
+        allowed_origins: document.getElementById('s-origins').value,
+        rate_limit_rps: parseFloat(document.getElementById('s-pub-rps').value),
+        rate_limit_burst: parseInt(document.getElementById('s-pub-burst').value, 10),
+        admin_rate_limit_rps: parseFloat(document.getElementById('s-adm-rps').value),
+        admin_rate_limit_burst: parseInt(document.getElementById('s-adm-burst').value, 10),
+        log_retention_days: parseInt(document.getElementById('s-log-ret').value, 10),
+        unsafe_lua: document.getElementById('set_unsafe_lua').checked,
+      };
+      await api('/settings', { method: 'POST', body: payload });
+      state.settings = payload;
+      document.getElementById('btn-save-settings').disabled = true;
+    }
+
+    // ---------- relations nested modal ----------
+    let relSearchTimeout;
+    async function openRelSelect(fieldName, targetCol, search = '') {
+      document.getElementById('rel-modal-title').innerText = `Select ${fieldName} from ${targetCol}`;
+      document.getElementById('rel-modal').style.display = 'flex';
+
+      const res = await api(`/collections/${targetCol}?search=${encodeURIComponent(search)}`);
+      let items = res.items ||[];
+
+      let html = `<div class="form-field">
+        <input type="text" id="rel-search-inp" placeholder="" value="${search}" oninput="clearTimeout(relSearchTimeout); relSearchTimeout=setTimeout(()=>openRelSelect('${fieldName}', '${targetCol}', this.value), 300)">
+        <label>Search...</label>
+      </div>`;
+
+      if (items.length === 0) {
+        html += `<div style="padding:1rem; text-align:center;">No items found.</div>`;
+      } else {
+        const colDef = state.collections.find(c => c.name === targetCol);
+        let schema = colDef ? colDef.schema || [] : [];
+        const cols =['id', ...schema.map(s => s.name)];
+        let ths = cols.map(c => `<th style="position: sticky; top: 0;">${c}</th>`).join('');
+
+        html += `<div style="width: 100%; overflow-x: auto; max-height: 480px; position: relative;">
+          <table class="data-table">
+            <thead>
+              <tr>${ths}</tr>
+            </thead>
+            <tbody>
+              ${items.map(itm => `
+                <tr onclick="selectRelItem('${fieldName}', '${itm.id}')" title="Select #${itm.id}">
+                  ${cols.map(c => {
+          let val = itm[c];
+          let sc = schema.find(s => s.name === c);
+          if (sc && sc.type === 'bool') {
+            return `<td>${(val === true || val === 1 || val === 'true') ? 'true' : 'false'}</td>`;
+          }
+          return `<td>${val !== undefined && val !== null ? val : ''}</td>`;
+        }).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>`;
+      }
+
+      html += `<button class="btn danger" onclick="closeModal()">Cancel</button>`;
+
+      document.getElementById('rel-modal-body').innerHTML = html;
+      setTimeout(() => {
+        let inp = document.getElementById('rel-search-inp');
+        if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+      }, 50);
+    }
+
+    function closeRelModal() { document.getElementById('rel-modal').style.display = 'none'; }
+    function selectRelItem(fieldName, id) {
+      document.getElementById(`f_${fieldName}`).value = id;
+      closeRelModal();
+    }
+
+
+    // ---------- files & tree ----------
+    async function loadFiles(base) {
+      let folderName = base;
+      if (state.settings) {
+        if (base === 'routes') folderName = state.settings.routes_path || base;
+        if (base === 'schedules') folderName = state.settings.schedules_path || base;
+        if (base === 'files') folderName = state.settings.files_path || base;
+      }
+
+      const res = await api(`/files?base=${base}`);
+      const files = res ||[];
+      let tree = {};
+      files.forEach(f => {
+        let parts = f.path.split('/');
+        let cur = tree;
+        for (let i = 0; i < parts.length; i++) {
+          let p = parts[i];
+          if (i === parts.length - 1) cur[p] = f.is_dir ? {} : null;
+          else { if (!cur[p]) cur[p] = {}; cur = cur[p]; }
+        }
+      });
+
+      function buildHtml(node, prefix = "") {
+        let html = "";
+        for (let k in node) {
+          let path = prefix ? prefix + "/" + k : k;
+          if (node[k] === null) {
+            html += `<li class="tree-item" onclick="editFile('${base}', '${esc(path)}')">
+            <span class="tree-label" title="${k}">📄 ${k}</span>
+            <div class="tree-actions">
+              <span class="del" onclick="event.stopPropagation(); deleteFile('${base}', '${esc(path)}')" title="Delete File">✕</span>
+            </div>
+          </li>`;
+          } else {
+            html += `<details>
+            <summary class="tree-item">
+              <span class="tree-label" title="${k}">📁 ${k}</span>
+              <div class="tree-actions">
+                <span onclick="event.preventDefault(); newFileModal('${base}', '${esc(path)}')" title="New in Folder">+</span>
+                <span class="del" onclick="event.preventDefault(); deleteFile('${base}', '${esc(path)}')" title="Delete Folder">✕</span>
+              </div>
+            </summary>
+            <ul>${buildHtml(node[k], path)}</ul>
+          </details>`;
+          }
+        }
+        return html;
+      }
+
+      let subHtml = "";
+      if (base === 'schedules') subHtml += `<div id="edit-schedules-btn" class="sub-item" onclick="loadCronJobs()">Edit Schedules...</div><hr>`;
+
+      subHtml += `
+      <div class="file-tree">
+        <div>
+          <details open>
+            <summary class="tree-item">
+              <span class="tree-label">📁 ${folderName}</span>
+              <div class="tree-actions">
+                <span onclick="newFileModal('${base}', '')" title="New file/folder">+</span>
+              </div>
+            </summary>
+            <ul>${buildHtml(tree) || `<i class="text-muted ml-6 text-sm">empty folder</i>`}</ul>
+          </details>
+          
+        </div>
+      </div>
+    `;
+
+      document.getElementById('sub-sidebar').innerHTML = subHtml;
+      document.getElementById('pane-content').innerHTML = ``;
+      if (base === 'schedules') loadCronJobs();
+    }
+
+    const extMap = { 'js': 'javascript', 'ts': 'typescript', 'py': 'python', 'sh': 'bash', 'md': 'markdown' };
+
+async function editFile(base, path) {
+      document.querySelectorAll('.sub-sidebar .sub-item').forEach(el => el.classList.remove('active'));
+
+      let apiBtnHtml = '';
+      if (path.endsWith('.lua')) {
+        apiBtnHtml = `<button class="btn secondary" onclick="showApiDocs()">API</button> `;
+      }
+
+      document.getElementById('pane-header').innerHTML = `
+      <h2 style="font-family: monospace; font-size:1.2rem;">${path}</h2>
+      <div>${apiBtnHtml}<button id="btn-save-file" class="btn" disabled onclick="saveFile('${base}', '${esc(path)}')">Save changes</button></div>
+    `;
+      if (path.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+        document.getElementById('pane-content').innerHTML = `<img src="/api/files?base=${base}&path=${path}&raw=true" style="max-width:100%;max-height:80vh">`;
+      } else {
+        const res = await api(`/files?base=${base}&path=${path}`);
+        
+        // Store the baseline content to compare against
+        state.currentFileContent = res.content; 
+        
+        let ext = path.split('.').pop().toLowerCase();
+        ext = extMap[ext] || ext;
+
+        document.getElementById('pane-content').innerHTML = `
+          <div id="file-editor" style="height:calc(100% - 1rem); width:100%;"></div>`;
+
+        if (window.editor) window.editor.remove();
+
+        let edTheme = localStorage.getItem('mogo_editor_theme') || 'auto';
+        let edTabSize = parseInt(localStorage.getItem('mogo_editor_tabSize') || '3', 10);
+        let edInsertSpaces = localStorage.getItem('mogo_editor_insertSpaces') === 'true';
+        let edWordWrap = localStorage.getItem('mogo_editor_wordWrap') !== 'false';
+        
+        let adminTheme = localStorage.getItem('mogo_theme') || 'auto';
+        if (adminTheme === 'auto') {
+          adminTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        
+        let isDark = edTheme === 'dark' || (edTheme === 'auto' && adminTheme === 'dark');
+
+        window.editor = createEditor('#file-editor', {
+          language: ext,
+          value: res.content,
+          tabSize: edTabSize,
+          insertSpaces: edInsertSpaces,
+          wordWrap: edWordWrap,
+          onUpdate(code) {
+            const btn = document.getElementById('btn-save-file');
+            if (btn) {
+              // Only enable the save button if the content actually changed
+              if (code !== state.currentFileContent) {
+                btn.disabled = false;
+                btn.innerText = "Save changes *";
+              } else {
+                btn.disabled = true;
+                btn.innerText = "Save changes";
+              }
+            }
+          }
+        });
+
+        if (isDark) {
+          document.getElementById('file-editor').classList.add('editor-dark');
+        }
+      }
+    }
+
+    function showApiDocs() {
+      // ... (keep your existing showApiDocs function here) ...
+      document.getElementById('modal-title').innerText = "Lua Global API docs";
+      document.getElementById('modal-body').innerHTML = `
+         <div style="font-size:0.9em; line-height:1.5;">
+           <p style="margin-bottom:8px">These globals are injected into Lua routes and schedules:</p>
+           <ul style="padding-left:1.5rem; margin-bottom:1rem;">
+             <li><code>log.info(msg) / log.warn(msg) / log.error(msg)</code> - Write to application log DB</li>
+             <li><code>http.get(url)</code> - HTTP GET request</li>
+             <li><code>http.request(url, params)</code> - HTTP request (params: method, headers, body)</li>
+           </ul>
+           <p style="margin-bottom:8px">In Lua routes, you have access to the <code>req</code> object:</p>
+           <ul style="padding-left:1.5rem;">
+             <li><code>req.query.abc</code> - URL query parameters</li>
+             <li><code>req.form.abc</code> / <code>req.body.abc</code> - Form/JSON parsed body</li>
+             <li><code>req.files.myFile</code> - Uploaded files (with <code>:save(dest)</code>, <code>.size</code>, <code>.filename</code>)</li>
+           </ul>
+         </div>
+       `;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function showApiDocs() {
+      document.getElementById('modal-title').innerText = "Lua Global API docs";
+      document.getElementById('modal-body').innerHTML = `
+         <div style="font-size:0.9em; line-height:1.5;">
+           <p style="margin-bottom:8px">These globals are injected into Lua routes and schedules:</p>
+           <ul style="padding-left:1.5rem; margin-bottom:1rem;">
+             <li><code>log.info(msg) / log.warn(msg) / log.error(msg)</code> - Write to application log DB</li>
+             <li><code>http.get(url)</code> - HTTP GET request</li>
+             <li><code>http.request(url, params)</code> - HTTP request (params: method, headers, body)</li>
+           </ul>
+           <p style="margin-bottom:8px">In Lua routes, you have access to the <code>req</code> object:</p>
+           <ul style="padding-left:1.5rem;">
+             <li><code>req.query.abc</code> - URL query parameters</li>
+             <li><code>req.form.abc</code> / <code>req.body.abc</code> - Form/JSON parsed body</li>
+             <li><code>req.files.myFile</code> - Uploaded files (with <code>:save(dest)</code>, <code>.size</code>, <code>.filename</code>)</li>
+           </ul>
+         </div>
+       `;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+
+    async function saveFile(base, path) {
+      let content = window.editor ? window.editor.value : document.getElementById('file-editor').value;
+      let btn = document.getElementById('btn-save-file');
+      btn.innerText = "Saving...";
+      
+      await api(`/files?base=${base}`, { method: 'POST', body: { path: path, content: content, is_dir: false } });
+      
+      // Update baseline content to the newly saved state
+      state.currentFileContent = content; 
+      
+      btn.disabled = true;
+      btn.innerText = "Save changes";
+    }
+
+    async function deleteFile(base, path) {
+      if (confirm('Delete?')) {
+        await api(`/files?base=${base}&path=${path}`, { method: 'DELETE' });
+        loadFiles(base);
+      }
+    }
+
+    function newFileModal(base, targetFolder) {
+      let folderName = base;
+      if (state.settings) {
+        if (base === 'routes') folderName = state.settings.routes_path || base;
+        if (base === 'schedules') folderName = state.settings.schedules_path || base;
+        if (base === 'files') folderName = state.settings.files_path || base;
+      }
+
+      let title = targetFolder ? `New in /${targetFolder}` : `New in /${folderName}`;
+      let html = `<div class="form-field">
+        <select id="nf-type">
+          <option value="file">File</option>
+          <option value="folder">Folder</option>
+        </select>
+        <label class="always-float">Type</label>
+      </div>
+      <div class="form-field">
+        <input id="nf-name" placeholder="" required>
+        <label>Name</label>
+      </div>
+      <div>
+        <button class="btn" onclick="createFile('${base}', '${esc(targetFolder)}')">Create</button> 
+        <button class="btn danger" onclick="closeModal()">Cancel</button>
+      </div>`;
+      openModal(title, html);
+    }
+
+    async function createFile(base, targetFolder) {
+      let name = document.getElementById('nf-name').value;
+      let type = document.getElementById('nf-type').value;
+      if (!name) return;
+
+      let isDir = type === 'folder';
+      let path = targetFolder ? targetFolder + '/' + name : name;
+      
+      let content = "";
+      if (!isDir) {
+        if (base === 'routes') {
+          content = "return {\n  GET = function(req)\n    return \"<h1>Hello, world!</h1>\"\n  end\n}";
+        } else if (base === 'schedules') {
+          content = "log.info(\"Hello, world!\")";
+        } else {
+          content = "Hello, world!";
+        }
+      }
+
+      await api(`/files?base=${base}`, { method: 'POST', body: { path: path, content: content, is_dir: isDir } });
+      closeModal();
+      loadFiles(base);
+    }
+
+    // ---------- cron jobs ----------
+    async function loadCronJobs() {
+      document.querySelectorAll('.sub-sidebar .sub-item').forEach(el => el.classList.remove('active'));
+      let btn = document.getElementById('edit-schedules-btn');
+      if (btn) btn.classList.add('active');
+
+      document.getElementById('pane-header').innerHTML = `<h2>Schedules</h2><button class="btn" onclick="cronModal()">+ New Schedule</button>`;
+      state.crons = await api('/crons');
+      renderCronsTable();
+    }
+
+    function renderCronsTable() {
+      let sorted = sortData([...state.crons]);
+      let rows = sorted.map(j => {
+        let schedText = j.schedule;
+        if (j.schedule_meta) {
+          try {
+            let meta = JSON.parse(j.schedule_meta);
+            if (meta.mode === 'interval') {
+              let parts =[];
+              if (meta.d) parts.push(meta.d + 'd');
+              if (meta.h) parts.push(meta.h + 'h');
+              if (meta.m) parts.push(meta.m + 'm');
+              if (meta.s) parts.push(meta.s + 's');
+              if (parts.length > 0) schedText = "Every " + parts.join(' ');
+            }
+          } catch (e) { }
+        }
+        return `<tr onclick="cronModal(${j.id})">
+        <td>${j.name}</td><td>${schedText}</td><td>${j.script_path}</td><td>${j.active ? 'true' : 'false'}</td>
+        <td style="text-align:right"><span class="clickable ml-2" onclick="event.stopPropagation(); deleteCron(${j.id})" title="Delete Job">✕</span></td>
+      </tr>`;
+      }).join('');
+      document.getElementById('pane-content').innerHTML = `
+      <table class="data-table"><thead><tr>
+        ${th('name', 'Name')}
+        ${th('schedule', 'Schedule')}
+        ${th('script_path', 'Script')}
+        ${th('active', 'Active')}
+        <th></th>
+      </tr></thead><tbody>${rows}</tbody></table>`;
+    }
+
+    window.updateCronUI = function () {
+      let mode = document.querySelector('input[name="cron_mode"]:checked').value;
+      document.getElementById('cron-raw-sec').style.display = (mode === 'raw') ? 'block' : 'none';
+      document.getElementById('cron-interval-sec').style.display = (mode === 'interval') ? 'block' : 'none';
+    }
+
+    async function cronModal(id = null) {
+      let j = {};
+      let mode = 'interval';
+      let meta = {};
+
+      if (id) {
+        j = state.crons.find(x => x.id == id) || {};
+        if (j.active === false) mode = 'disabled';
+        else if (j.schedule_meta) {
+          try { meta = JSON.parse(j.schedule_meta); mode = meta.mode; } catch (e) { }
+        } else {
+          mode = 'raw';
+        }
+      }
+
+      let d = meta.d || '', h = meta.h || '', m = meta.m || '', s = meta.s || '';
+
+      const files = await api('/files?base=schedules') ||[];
+      const fileOptions = files.filter(f => !f.is_dir).map(f =>
+        `<option value="${f.path}" ${j.script_path === f.path ? 'selected' : ''}>${f.path}</option>`
+      ).join('');
+
+      let html = `<div class="form-field"><input id="cj-name" value="${j.name || ''}" placeholder=" "><label>Name</label></div>
+      
+      <div>
+        <div style="font-size: 0.85em; margin-bottom: 0.4rem; color: var(--muted);">Schedule Mode</div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <label style="cursor:pointer; display:flex; align-items:center; gap:0.25rem;"><input type="radio" name="cron_mode" value="interval" ${mode === 'interval' ? 'checked' : ''} onchange="updateCronUI()"> Run every...</label>
+          <label style="cursor:pointer; display:flex; align-items:center; gap:0.25rem;"><input type="radio" name="cron_mode" value="raw" ${mode === 'raw' ? 'checked' : ''} onchange="updateCronUI()"> Cron</label>
+          <label style="cursor:pointer; display:flex; align-items:center; gap:0.25rem;"><input type="radio" name="cron_mode" value="disabled" ${mode === 'disabled' ? 'checked' : ''} onchange="updateCronUI()"> Disabled</label>
+        </div>
+      </div>
+
+      <div id="cron-raw-sec" style="display:${mode === 'raw' ? 'block' : 'none'};">
+        <div style="font-size:0.85rem; color:var(--muted); margin-bottom:0.5rem;">
+            Note: This uses a 6-field (quartz-style) cron expression. <a href="https://www.6-cron.com/" target="_blank" style="color:var(--accent)">Learn more</a>
+        </div>
+        <div class="form-field"><input id="cj-sch" value="${j.schedule || '0 * * * * *'}" placeholder=" "><label>Schedule (cron)</label></div>
+      </div>
+
+      <div id="cron-interval-sec" style="display:${mode === 'interval' ? 'block' : 'none'};">
+        <div>
+          <div class="form-field"><input type="number" id="ci-day" min="1" value="${d}" placeholder=" "><label>Days</label></div>
+          <div class="form-field"><input type="number" id="ci-hr" min="1" value="${h}" placeholder=" "><label>Hours</label></div>
+          <div class="form-field"><input type="number" id="ci-min" min="1" value="${m}" placeholder=" "><label>Minutes</label></div>
+          <div class="form-field"><input type="number" id="ci-sec" min="1" value="${s}" placeholder=" "><label>Seconds</label></div>
+        </div>
+      </div>
+
+      <div class="form-field">
+        <select id="cj-scr" style="width:100%; margin:0;">
+          <option value="" disabled ${!j.script_path ? 'selected' : ''}>Select a script...</option>
+          ${fileOptions}
+        </select>
+        <label class="always-float">Lua Script Path</label>
+      </div>
+
+      <div class="text-right mt-2" style="margin-top:1rem"><button class="btn" onclick="saveCron(${id})">Save</button> <button class="btn danger" onclick="closeModal()">Cancel</button></div>`;
+      openModal(`${id ? 'Edit' : 'New'} Cron Job`, html);
+    }
+
+    async function saveCron(id) {
+      let mode = document.querySelector('input[name="cron_mode"]:checked').value;
+      let schedule = document.getElementById('cj-sch')?.value || '0 * * * * *';
+      let active = (mode !== 'disabled');
+      let meta = { mode: mode };
+
+      if (mode === 'interval') {
+        let d = document.getElementById('ci-day').value;
+        let h = document.getElementById('ci-hr').value;
+        let m = document.getElementById('ci-min').value;
+        let s = document.getElementById('ci-sec').value;
+
+        if (d) meta.d = d;
+        if (h) meta.h = h;
+        if (m) meta.m = m;
+        if (s) meta.s = s;
+
+        schedule = "Interval";
+      }
+
+      await api('/crons', {
+        method: 'POST', body: {
+          id: id,
+          name: document.getElementById('cj-name').value,
+          schedule: schedule,
+          schedule_meta: JSON.stringify(meta),
+          script_path: document.getElementById('cj-scr').value,
+          active: active
+        }
+      });
+
+      closeModal();
+      loadCronJobs();
+    }
+
+    async function deleteCron(id) { if (confirm("Delete Job?")) { await api(`/crons?id=${id}`, { method: 'DELETE' }); loadCronJobs(); } }
+
+    // modal utils
+    function openModal(title, html) { document.getElementById('modal-title').innerText = title; document.getElementById('modal-body').innerHTML = html; document.getElementById('modal').style.display = 'flex'; }
+    function closeModal() { document.getElementById('modal').style.display = 'none'; document.getElementById('rel-modal').style.display = 'none'; }
+
+    init();
+  </script>
+</body>
+
+</html>
