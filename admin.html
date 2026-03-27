@@ -946,7 +946,7 @@ async function loadSettings(sub = 'admin') {
       <div class="modal">
         <h3>Security</h3>
         <div class="form-check"><label><span>Allow Unsafe Lua</span><input type="checkbox" id="set_unsafe_lua" ${s.unsafe_lua  ? 'checked' : ''}></label></div>
-        <div class="hint" style="margin-top: -1em;">Give Lua scripts access to os, io, and debug libraries</div>
+        <div class="hint" style="margin-top: -1em;">Give Lua scripts access to complete os, io, and debug libraries</div>
         <h5>CORS & Rate Limiting</h5>
         <div class="form-field">
           <input id="s-origins" value="${s.allowed_origins || ''}" placeholder=" ">
@@ -956,11 +956,11 @@ async function loadSettings(sub = 'admin') {
           <div class="form-field"><input type="number" id="s-pub-rps" value="${s.rate_limit_rps || 50}" placeholder=" "><label>Public RPS</label></div>
           <div class="form-field"><input type="number" id="s-pub-burst" value="${s.rate_limit_burst || 100}" placeholder=" "><label>Public Burst</label></div>
         </div>
-        <div class="hbox">
-          <div class="form-field"><input type="number" id="s-adm-rps" value="${s.admin_rate_limit_rps || 10}" placeholder=" "><label>Admin RPS</label></div>
-          <div class="form-field"><input type="number" id="s-adm-burst" value="${s.admin_rate_limit_burst || 20}" placeholder=" "><label>Admin Burst</label></div>
+        <div class="form-field">
+          <input type="number" id="s-adm-retries" value="${s.admin_max_retries !== undefined ? s.admin_max_retries : 5}" placeholder=" ">
+          <label>Admin Max Retries</label>
         </div>
-        <div class="hint">Set limits to 0 to disable rate limiting for that scope.</div>
+        <div class="hint">Set limits to 0 to disable.</div>
       </div>
 
       <div style="padding-top: 1rem;">
@@ -997,8 +997,7 @@ async function loadSettings(sub = 'admin') {
         allowed_origins: document.getElementById('s-origins').value,
         rate_limit_rps: parseFloat(document.getElementById('s-pub-rps').value),
         rate_limit_burst: parseInt(document.getElementById('s-pub-burst').value, 10),
-        admin_rate_limit_rps: parseFloat(document.getElementById('s-adm-rps').value),
-        admin_rate_limit_burst: parseInt(document.getElementById('s-adm-burst').value, 10),
+        admin_max_retries: parseInt(document.getElementById('s-adm-retries').value, 10),
         log_retention_days: parseInt(document.getElementById('s-log-ret').value, 10),
         unsafe_lua: document.getElementById('set_unsafe_lua').checked,
       };

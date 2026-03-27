@@ -50,8 +50,7 @@ type Settings struct {
 	AllowedOrigins      string  `json:"allowed_origins"`
 	RateLimitRPS        float64 `json:"rate_limit_rps"`
 	RateLimitBurst      int     `json:"rate_limit_burst"`
-	AdminRateLimitRPS   float64 `json:"admin_rate_limit_rps"`
-	AdminRateLimitBurst int     `json:"admin_rate_limit_burst"`
+	AdminMaxRetries int `json:"admin_max_retries"`
 
 	LogRetentionDays int  `json:"log_retention_days"`
 	UnsafeLua        bool `json:"unsafe_lua"`
@@ -65,25 +64,14 @@ func loadSettings() {
 	os.MkdirAll(routesPath, os.ModePerm)
 	os.MkdirAll(publicPath, os.ModePerm)
 
+	appSettings.RateLimitRPS = 100
+	appSettings.RateLimitBurst = 200
+	appSettings.AdminMaxRetries = 5
+	appSettings.LogRetentionDays = 30
+
 	b, err := os.ReadFile(filepath.Join(dataPath, "settings.json"))
 	if err == nil {
 		json.Unmarshal(b, &appSettings)
-	}
-
-	if appSettings.RateLimitRPS == 0 {
-		appSettings.RateLimitRPS = 100
-	}
-	if appSettings.RateLimitBurst == 0 {
-		appSettings.RateLimitBurst = 200
-	}
-	if appSettings.AdminRateLimitRPS == 0 {
-		appSettings.AdminRateLimitRPS = 10
-	}
-	if appSettings.AdminRateLimitBurst == 0 {
-		appSettings.AdminRateLimitBurst = 20
-	}
-	if appSettings.LogRetentionDays == 0 {
-		appSettings.LogRetentionDays = 30
 	}
 
 	initLuaPool()
@@ -125,35 +113,50 @@ func (tb *TokenBucket) Allow(rps float64, burst int) bool {
 }
 
 var (
-	generalLimiters = make(map[string]*TokenBucket)
-	adminLimiters   = make(map[string]*TokenBucket)
-	limiterMu       sync.Mutex
+	generalLimiters     = make(map[string]*TokenBucket)
+	adminFailedAttempts = make(map[string]int)
+	limiterMu           sync.Mutex
 )
 
-func allowRateLimit(ip string, isAdmin bool) bool {
+func allowRateLimit(ip string) bool {
 	limiterMu.Lock()
 	defer limiterMu.Unlock()
 
 	rps := appSettings.RateLimitRPS
 	burst := appSettings.RateLimitBurst
-	limitsMap := generalLimiters
-
-	if isAdmin {
-		rps = appSettings.AdminRateLimitRPS
-		burst = appSettings.AdminRateLimitBurst
-		limitsMap = adminLimiters
-	}
 
 	if rps <= 0 {
 		return true
 	}
 
-	lim, exists := limitsMap[ip]
+	lim, exists := generalLimiters[ip]
 	if !exists {
 		lim = &TokenBucket{tokens: float64(burst), last: time.Now()}
-		limitsMap[ip] = lim
+		generalLimiters[ip] = lim
 	}
 	return lim.Allow(rps, burst)
+}
+
+func isIpLockedOut(ip string) bool {
+	if appSettings.AdminMaxRetries <= 0 {
+		return false
+	}
+	limiterMu.Lock()
+	defer limiterMu.Unlock()
+	return adminFailedAttempts[ip] >= appSettings.AdminMaxRetries
+}
+
+func recordAdminAttempt(ip string, success bool) {
+	if appSettings.AdminMaxRetries <= 0 {
+		return
+	}
+	limiterMu.Lock()
+	defer limiterMu.Unlock()
+	if success {
+		delete(adminFailedAttempts, ip)
+	} else {
+		adminFailedAttempts[ip]++
+	}
 }
 
 func initDB() {
@@ -672,10 +675,10 @@ func getIP(r *http.Request) string {
 	return strings.TrimSpace(ip)
 }
 
-func adminRateLimitMiddleware(next http.HandlerFunc) http.HandlerFunc {
+func adminLockoutMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !allowRateLimit(getIP(r), true) {
-			http.Error(w, "Too Many Requests (Admin Limit)", http.StatusTooManyRequests)
+		if isIpLockedOut(getIP(r)) {
+			http.Error(w, "Too Many Failed Attempts", http.StatusTooManyRequests)
 			return
 		}
 		next(w, r)
@@ -696,7 +699,7 @@ func corsAndRateLimitMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		if !allowRateLimit(getIP(r), false) {
+		if !allowRateLimit(getIP(r)) {
 			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 			return
 		}
@@ -705,7 +708,7 @@ func corsAndRateLimitMiddleware(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func adminMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return adminRateLimitMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	return adminLockoutMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		var key string
 		if cookie, err := r.Cookie("mogo_token"); err == nil {
 			key = cookie.Value
@@ -718,13 +721,17 @@ func adminMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
+		ip := getIP(r)
 		var permissions string
 		err := dbConn.QueryRow("SELECT permissions FROM _api_keys WHERE key = ?", key).Scan(&permissions)
 		if err == nil {
+			recordAdminAttempt(ip, true)
 			r.Header.Set("X-Admin-Perms", permissions)
 			next(w, r)
 			return
 		}
+		
+		recordAdminAttempt(ip, false)
 		http.Error(w, "Invalid API Key", 401)
 	})
 }
@@ -791,13 +798,17 @@ func handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	json.NewDecoder(r.Body).Decode(&creds)
 
+	ip := getIP(r)
 	var permissions string
 	err := dbConn.QueryRow("SELECT permissions FROM _api_keys WHERE key = ?", creds.APIKey).Scan(&permissions)
 	if err == nil {
+		recordAdminAttempt(ip, true)
 		setAuthCookie(w, creds.APIKey)
 		w.Write([]byte(`{"success":true}`))
 		return
 	}
+	
+	recordAdminAttempt(ip, false)
 	http.Error(w, "Invalid API Key", 401)
 }
 
@@ -2307,7 +2318,7 @@ func main() {
 	initRoutes()
 	initCron()
 
-	adminStatic := adminRateLimitMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	adminStatic := adminLockoutMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/admin/")
 		path = strings.TrimPrefix(path, "/")
 		if path == "" {
@@ -2333,7 +2344,7 @@ func main() {
 	})
 	http.Handle("/admin/", adminStatic)
 
-	http.HandleFunc("/api/auth/login", adminRateLimitMiddleware(handleAdminLogin))
+	http.HandleFunc("/api/auth/login", adminLockoutMiddleware(handleAdminLogin))
 	http.HandleFunc("/api/auth/check", adminMiddleware(handleAuthCheck))
 	http.HandleFunc("/api/settings", adminMiddleware(handleAdminSettings))
 	http.HandleFunc("/api/backup", adminMiddleware(handleAdminBackup))
