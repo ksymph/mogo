@@ -30,14 +30,18 @@ import (
 //go:embed admin.html style.css prism-code.js
 var embedFS embed.FS
 
+var (
+	rootDir     string
+	dataPath    string
+	publicPath  string
+	routesPath  string
+	scriptsPath string
+)
+
 // -----------------------------------------------------------------------------
 // 0. SETTINGS & CONFIG
 // -----------------------------------------------------------------------------
 type Settings struct {
-	DataPath        string `json:"data_path"`
-	SchedulesPath   string `json:"schedules_path"`
-	RoutesPath      string `json:"routes_path"`
-	FilesPath       string `json:"files_path"`
 	BackupDestDir   string `json:"backup_dest_dir"`
 	BackupFull      bool   `json:"backup_full"`
 	BackupSched     string `json:"backup_sched"`
@@ -56,21 +60,14 @@ type Settings struct {
 var appSettings Settings
 
 func loadSettings() {
-	b, err := os.ReadFile("settings.json")
+	os.MkdirAll(dataPath, os.ModePerm)
+	os.MkdirAll(scriptsPath, os.ModePerm)
+	os.MkdirAll(routesPath, os.ModePerm)
+	os.MkdirAll(publicPath, os.ModePerm)
+
+	b, err := os.ReadFile(filepath.Join(dataPath, "settings.json"))
 	if err == nil {
 		json.Unmarshal(b, &appSettings)
-	}
-	if appSettings.DataPath == "" {
-		appSettings.DataPath = "data"
-	}
-	if appSettings.SchedulesPath == "" {
-		appSettings.SchedulesPath = "scripts"
-	}
-	if appSettings.RoutesPath == "" {
-		appSettings.RoutesPath = "routes"
-	}
-	if appSettings.FilesPath == "" {
-		appSettings.FilesPath = "files"
 	}
 
 	if appSettings.RateLimitRPS == 0 {
@@ -89,17 +86,12 @@ func loadSettings() {
 		appSettings.LogRetentionDays = 30
 	}
 
-	os.MkdirAll(appSettings.DataPath, os.ModePerm)
-	os.MkdirAll(appSettings.SchedulesPath, os.ModePerm)
-	os.MkdirAll(appSettings.RoutesPath, os.ModePerm)
-	os.MkdirAll(appSettings.FilesPath, os.ModePerm)
-
 	initLuaPool()
 }
 
 func saveSettings(s Settings) {
 	b, _ := json.MarshalIndent(s, "", "  ")
-	os.WriteFile("settings.json", b, 0644)
+	os.WriteFile(filepath.Join(dataPath, "settings.json"), b, 0644)
 	appSettings = s
 	initLuaPool() // Re-initialize pool to apply UnsafeLua changes
 }
@@ -166,7 +158,7 @@ func allowRateLimit(ip string, isAdmin bool) bool {
 
 func initDB() {
 	var err error
-	dbPath := filepath.Join(appSettings.DataPath, "database.sqlite")
+	dbPath := filepath.Join(dataPath, "database.sqlite")
 	dbConn, err = sql.Open("sqlite", dbPath)
 	if err != nil {
 		log.Fatalf("Failed to open SQLite database: %v", err)
@@ -174,7 +166,7 @@ func initDB() {
 	initSystemTables()
 	initMasterKey()
 
-	logDBPath := filepath.Join(appSettings.DataPath, "log.sqlite")
+	logDBPath := filepath.Join(dataPath, "log.sqlite")
 	logDBConn, err = sql.Open("sqlite", logDBPath+"?_journal_mode=WAL")
 	if err != nil {
 		log.Fatalf("Failed to open Log database: %v", err)
@@ -255,7 +247,7 @@ func initMasterKey() {
 		crand.Read(b)
 		newKey := "sk_" + hex.EncodeToString(b)
 
-		allPerms := `{"collections":{"*":["item","schema"]},"routes":true,"schedules":true,"files":true,"settings":true,"keys":true,"logs":true}`
+		allPerms := `{"collections":{"*":["item","schema"]},"routes":true,"schedules":true,"public":true,"settings":true,"keys":true,"logs":true}`
 		dbConn.Exec("INSERT INTO _api_keys (key, name, permissions, created) VALUES (?, ?, ?, ?)",
 			newKey, "admin", allPerms, time.Now().Format("2006-01-02 15:04:05"))
 
@@ -271,7 +263,7 @@ func generateNewMasterKey() {
 	crand.Read(b)
 	newKey := "sk_" + hex.EncodeToString(b)
 
-	allPerms := `{"collections":{"*":["item","schema"]},"routes":true,"schedules":true,"files":true,"settings":true,"keys":true,"logs":true}`
+	allPerms := `{"collections":{"*":["item","schema"]},"routes":true,"schedules":true,"public":true,"settings":true,"keys":true,"logs":true}`
 	dbConn.Exec("INSERT INTO _api_keys (key, name, permissions, created) VALUES (?, ?, ?, ?)",
 		newKey, "cli-generated", allPerms, time.Now().Format("2006-01-02 15:04:05"))
 
@@ -331,7 +323,7 @@ func initCron() {
 			var scheduleMeta sql.NullString
 			rows.Scan(&id, &schedule, &scheduleMeta, &scriptPath)
 
-			fullPath := filepath.Join(appSettings.SchedulesPath, scriptPath)
+			fullPath := filepath.Join(scriptsPath, scriptPath)
 
 			mode := "raw"
 			var meta map[string]any
@@ -448,13 +440,13 @@ func runCronScript(scriptPath string) {
 
 func createBackup(destDir string, full bool) error {
 	if destDir == "" {
-		destDir = filepath.Join(appSettings.DataPath, "backups")
+		destDir = filepath.Join(dataPath, "backups")
 	}
 	os.MkdirAll(destDir, os.ModePerm)
 	timestamp := time.Now().Format("2006-01-02_15-04-05")
 
 	if !full {
-		src := filepath.Join(appSettings.DataPath, "database.sqlite")
+		src := filepath.Join(dataPath, "database.sqlite")
 		dst := filepath.Join(destDir, timestamp+".sqlite")
 		in, err := os.Open(src)
 		if err != nil {
@@ -1250,15 +1242,15 @@ func handleAdminData(w http.ResponseWriter, r *http.Request) {
 
 func handleAdminFiles(w http.ResponseWriter, r *http.Request) {
 	base := r.URL.Query().Get("base")
-	baseDir := appSettings.FilesPath
-	permKey := "files"
+	baseDir := publicPath
+	permKey := "public"
 
 	if base == "routes" {
-		baseDir = appSettings.RoutesPath
+		baseDir = routesPath
 		permKey = "routes"
 	}
 	if base == "schedules" {
-		baseDir = appSettings.SchedulesPath
+		baseDir = scriptsPath
 		permKey = "schedules"
 	}
 
@@ -1762,11 +1754,11 @@ var routesMu sync.RWMutex
 func initRoutes() {
 	paramRegex := regexp.MustCompile(`\[([^/]+)\]`)
 	var newRoutes []Route
-	filepath.Walk(appSettings.RoutesPath, func(path string, info os.FileInfo, err error) error {
+	filepath.Walk(routesPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || filepath.Ext(path) != ".lua" {
 			return nil
 		}
-		relPath, _ := filepath.Rel(appSettings.RoutesPath, path)
+		relPath, _ := filepath.Rel(routesPath, path)
 		urlPath := "/" + strings.TrimSuffix(filepath.ToSlash(relPath), ".lua")
 		if strings.HasSuffix(urlPath, "/index") {
 			urlPath = strings.TrimSuffix(urlPath, "index")
@@ -2111,8 +2103,8 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 
 					// Security Jail check
 					if !appSettings.UnsafeLua {
-						absBase, _ := filepath.Abs(appSettings.FilesPath)
-						absTarget, _ := filepath.Abs(filepath.Join(appSettings.FilesPath, destPath))
+						absBase, _ := filepath.Abs(publicPath)
+						absTarget, _ := filepath.Abs(filepath.Join(publicPath, destPath))
 						if !strings.HasPrefix(absTarget, absBase) {
 							L.Push(lua.LBool(false))
 							L.Push(lua.LString("access denied: path escapes secure directory"))
@@ -2166,8 +2158,8 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Security Jail check
 		if !appSettings.UnsafeLua {
-			absBase, _ := filepath.Abs(appSettings.FilesPath)
-			absTarget, _ := filepath.Abs(filepath.Join(appSettings.FilesPath, pathStr))
+			absBase, _ := filepath.Abs(publicPath)
+			absTarget, _ := filepath.Abs(filepath.Join(publicPath, pathStr))
 			if !strings.HasPrefix(absTarget, absBase) {
 				L.RaiseError("access denied: path escapes secure directory")
 				return 0
@@ -2290,6 +2282,18 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	rootDir = "."
+	for _, arg := range os.Args[1:] {
+		if strings.HasPrefix(arg, "--dir=") {
+			rootDir = strings.TrimPrefix(arg, "--dir=")
+		}
+	}
+
+	dataPath = filepath.Join(rootDir, "data")
+	publicPath = filepath.Join(rootDir, "public")
+	routesPath = filepath.Join(rootDir, "routes")
+	scriptsPath = filepath.Join(rootDir, "scripts")
+
 	loadSettings()
 	initDB()
 
@@ -2344,9 +2348,9 @@ func main() {
 	http.HandleFunc("/", corsAndRateLimitMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		// Clean the requested path and securely bind it to the designated files directory
 		cleanPath := filepath.Clean(filepath.FromSlash(r.URL.Path))
-		targetPath := filepath.Join(appSettings.FilesPath, cleanPath)
+		targetPath := filepath.Join(publicPath, cleanPath)
 
-		absBase, err1 := filepath.Abs(appSettings.FilesPath)
+		absBase, err1 := filepath.Abs(publicPath)
 		absTarget, err2 := filepath.Abs(targetPath)
 
 		// Ensure the requested file doesn't escape the secure directory

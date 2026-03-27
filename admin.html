@@ -47,7 +47,7 @@
             stroke-linecap="round" stroke-linejoin="round" />
         </svg>
       </div>
-      <div class="icon-btn" onclick="nav('files')" title="Files">
+      <div class="icon-btn" onclick="nav('public')" title="Public">
         <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M7 18H10.5H14" stroke="currentColor" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round" />
@@ -424,7 +424,7 @@
       let iconBtn = document.querySelector(`.icon-btn[onclick="nav('${tab}')"]`);
       if (iconBtn) iconBtn.classList.add('active');
 
-      document.getElementById('sub-sidebar').style.display =['collections', 'routes', 'files', 'schedules', 'settings'].includes(tab) ? 'flex' : 'none';
+      document.getElementById('sub-sidebar').style.display =['collections', 'routes', 'public', 'schedules', 'settings'].includes(tab) ? 'flex' : 'none';
       document.getElementById('pane-header').style.display = '';
       document.getElementById('pane-header').innerHTML = '';
       document.getElementById('pane-content').innerHTML = '';
@@ -434,7 +434,7 @@
       if (tab === 'keys') loadKeys();
       if (tab === 'settings') loadSettings('admin');
       if (tab === 'logs') loadLogs();
-      if (tab === 'routes' || tab === 'files' || tab === 'schedules') loadFiles(tab);
+      if (tab === 'routes' || tab === 'public' || tab === 'schedules') loadFiles(tab);
     }
 
     // ---------- collections ----------
@@ -728,7 +728,7 @@
       <div class="form-block">
               <label class="form-check"><span>Routes</span><input type="checkbox" id="pk_routes"></label>
               <label class="form-check"><span>Schedules</span><input type="checkbox" id="pk_schedules"></label>
-              <label class="form-check"><span>Files</span><input type="checkbox" id="pk_files"></label>
+              <label class="form-check"><span>Public</span><input type="checkbox" id="pk_public"></label>
               <label class="form-check"><span>Settings</span><input type="checkbox" id="pk_settings"></label>
               <label class="form-check"><span style="color:var(--danger)">Keys</span><input type="checkbox" id="pk_keys"></label>
               <label class="form-check"><span style="color:var(--danger)">All Collections</span><input type="checkbox" id="pk_all_cols" onchange="toggleColPerms(this.checked)"></label>
@@ -756,7 +756,7 @@
             if (document.getElementById(`pk_s_${name}`).checked) perms.collections[name].push("schema");
           }
         });
-      }["routes", "files", "schedules", "settings", "keys"].forEach(k => { if (document.getElementById(`pk_${k}`).checked) perms[k] = true; });
+      }["routes", "public", "schedules", "settings", "keys"].forEach(k => { if (document.getElementById(`pk_${k}`).checked) perms[k] = true; });
 
       let name = document.getElementById('k-name').value;
       await api('/keys', { method: 'POST', body: { name, permissions: perms } });
@@ -891,26 +891,6 @@ async function loadSettings(sub = 'admin') {
         </div>
         <div class="hint">Restart the server for port changes to take effect.</div>
       </div>
-
-      <div class="modal">
-        <h3>Paths</h3>
-        <div class="form-field">
-          <input id="s-data" value="${s.data_path || ''}" placeholder="" required>
-          <label>Data</label>
-        </div>
-        <div class="form-field">
-          <input id="s-routes" value="${s.routes_path || ''}" placeholder="">
-          <label>Routes</label>
-        </div>
-        <div class="form-field">
-          <input id="s-schedules" value="${s.schedules_path || ''}" placeholder="">
-          <label>Scheduled scripts</label>
-        </div>
-        <div class="form-field">
-          <input id="s-files" value="${s.files_path || ''}" placeholder="">
-          <label>Files</label>
-        </div>
-      </div>
       
       <div class="modal">
         <h3>Logs</h3>
@@ -923,15 +903,15 @@ async function loadSettings(sub = 'admin') {
       <div class="modal">
         <h3>Backups</h3>
         <div class="form-field">
-          <input id="s-bkp-dir" value="${s.backup_dest_dir || 'data/backups'}" placeholder=" ">
-          <label>Backups directory</label>
+          <input id="s-bkp-dir" value="${s.backup_dest_dir || ''}" placeholder=" ">
+          <label>Backups directory (default: data/backups)</label>
         </div>
 
         <div>
           <div class="hint">Back up...</div>
           <div class="radio-group" style="gap:0.5rem;">
             <label><input type="radio" name="bkp_scope" value="db" ${!s.backup_full ? 'checked' : ''}> Only Collections</label>
-            <label><input type="radio" name="bkp_scope" value="all" ${s.backup_full ? 'checked' : ''}> Everything (data, scripts, files, etc.)</label>
+            <label><input type="radio" name="bkp_scope" value="all" ${s.backup_full ? 'checked' : ''}> Everything (collections, scripts, public files, etc.)</label>
           </div>
         </div>
 
@@ -1010,10 +990,6 @@ async function loadSettings(sub = 'admin') {
 
       let payload = {
         port: parseInt(document.getElementById('s-port').value, 10) || 8080,
-        data_path: document.getElementById('s-data').value,
-        routes_path: document.getElementById('s-routes').value,
-        schedules_path: document.getElementById('s-schedules').value,
-        files_path: document.getElementById('s-files').value,
         backup_dest_dir: document.getElementById('s-bkp-dir').value,
         backup_full: document.querySelector('input[name="bkp_scope"]:checked').value === 'all',
         backup_sched: schedule,
@@ -1095,12 +1071,6 @@ async function loadSettings(sub = 'admin') {
     // ---------- files & tree ----------
     async function loadFiles(base) {
       let folderName = base;
-      if (state.settings) {
-        if (base === 'routes') folderName = state.settings.routes_path || base;
-        if (base === 'schedules') folderName = state.settings.schedules_path || base;
-        if (base === 'files') folderName = state.settings.files_path || base;
-      }
-
       const res = await api(`/files?base=${base}`);
       const files = res ||[];
       let tree = {};
@@ -1302,12 +1272,6 @@ async function editFile(base, path) {
 
     function newFileModal(base, targetFolder) {
       let folderName = base;
-      if (state.settings) {
-        if (base === 'routes') folderName = state.settings.routes_path || base;
-        if (base === 'schedules') folderName = state.settings.schedules_path || base;
-        if (base === 'files') folderName = state.settings.files_path || base;
-      }
-
       let title = targetFolder ? `New in /${targetFolder}` : `New in /${folderName}`;
       let html = `<div class="form-field">
         <select id="nf-type">
