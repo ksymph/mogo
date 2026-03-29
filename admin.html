@@ -210,6 +210,16 @@
       if (e.key === 'Escape' && document.getElementById('modal').style.display === 'flex') {
         closeModal();
       }
+      // Ctrl+S or Cmd+S to save file
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        const saveBtn = document.getElementById('btn-save-file');
+        if (saveBtn && !saveBtn.disabled) {
+          e.preventDefault();
+          saveBtn.click();
+        } else if (saveBtn && saveBtn.disabled) {
+          e.preventDefault(); // Prevent browser save dialog even if no changes
+        }
+      }
     });
 
     function esc(s) { return s.replace(/'/g, "\\'"); }
