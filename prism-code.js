@@ -1,3 +1,54 @@
+/*
+MIT License
+
+Copyright (c) 2023 Jonas Pytte
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+"""
+This license applies to parts of the `package/src/prism` subdirectory originating
+from https://github.com/PrismJS/prism:
+
+MIT LICENSE
+
+Copyright (c) 2012 Lea Verou
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+"""
+*/
+
 var xe={},ce=Symbol(),be=Symbol(),ut=e=>typeof e=="string"?R[e]:e,R={plain:xe,plaintext:xe,text:xe,txt:xe},Ve=(e,t)=>(t[be]||pt)(e,t),pt=(e,t)=>{for(var n=[e],s,a=[],p=0;s=ut(t[ce]);)delete t[ce],Object.assign(t,s);for(ht(e,t,n,0);a[p++]=n[0],n=n[1];);return a},ft=(e,t,n)=>e.replace(/&/g,"&amp;").replace(t,n),nt="</span>",$e="",he="",dt=e=>{for(var t="",n,s=0;n=e[s++];)t+=gt(n);return t},gt=e=>{if(e instanceof me){var{type:t,alias:n,content:s}=e,a=$e,p=he,c=`<span class="token ${t+(n?" "+n:"")+(t=="keyword"&&typeof s=="string"?" keyword-"+s:"")}">`;he+=nt,$e+=c;var g=gt(s);return $e=a,he=p,c+g+nt}return typeof e!="string"?dt(e):(e=ft(e,/</g,"&lt;"),he&&e.includes(`
 `)?e.replace(/\n/g,he+`
 `+$e):e)},ht=(e,t,n,s,a)=>{for(var p in t)if(t[p])for(var c=0,g=t[p],h,b=Array.isArray(g)?g:[g];h=b[c];c++){if(a&&a[0]==p&&a[1]==c)return;for(var d=h.pattern||h,o=ut(h.inside),v=h.lookbehind,m=d.global,k=h.alias,$=n,l=s;$&&(!a||l<a[2]);l+=$[0].length,$=$[1]){var i=$[0],r=0,u;if(!(i instanceof me)){if(d.lastIndex=m?l:0,u=d.exec(m?e:i),!u&&m)break;if(u&&u[0]){var f=v&&u[1]?u[1].length:0,w=u.index+f,x=u[0].slice(f),T=w+x.length,S,g;if(m){for(;g=l+$[0].length,w>=g;$=$[1],l=g);if($[0]instanceof me)continue;for(S=$,g=l;(g+=S[0].length)<T;S=S[1],r++);i=e.slice(l,g),w-=l,T-=l}for(var L=i.slice(T),_=l+i.length,j=new me(p,o?Ve(x,o):x,x,k),I=$,W=0,q;I=I[1],W++<r;);L&&(!I||I[0]instanceof me?I=[L,I]:I[0]=L+I[0]),l+=w,$[0]=w?i.slice(0,w):j,w?$=$[1]=[j,I]:$[1]=I,r&&(ht(e,t,$,l,q=[p,c,_]),_=q[2]),a&&_>a[2]&&(a[2]=_)}}}}};function me(e,t,n,s){this.type=e,this.content=t,this.alias=s,this.length=n.length}const Rt=(e,t,...n)=>{let s,a=[],p,c="",g,h=!1,b=!0,d=[],o,v=0;const m=Ot(),k=m.firstChild,$=k.children,l=$[0],i=l.firstChild,r={language:"text",value:c},u=new Set(n),f={},w=E=>{Object.assign(r,E);let C=c!=(c=E.value??c),M=s!=(s=r.language);o=!!r.readOnly,m.style.tabSize=r.tabSize||2,i.inputMode=o?"none":"",i.setAttribute("aria-readonly",o),S(),T(),C&&(h||i.remove(),i.value=c,i.selectionEnd=0,h||l.prepend(i)),(C||M)&&x()},x=()=>{d=Ve(c=i.value,R[s]||{}),I("tokenize",d,s,c);let E=dt(d).split(`
