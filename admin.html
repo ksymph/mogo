@@ -210,6 +210,15 @@
       if (e.key === 'Escape' && document.getElementById('modal').style.display === 'flex') {
         closeModal();
       }
+      // Enter to confirm modals
+      if (e.key === 'Enter' && document.getElementById('modal').style.display === 'flex') {
+        if (e.target.tagName === 'TEXTAREA') return; // Allow newlines in textareas
+        const confirmBtn = document.getElementById('modal-confirm-btn');
+        if (confirmBtn && !confirmBtn.disabled) {
+          e.preventDefault();
+          confirmBtn.click();
+        }
+      }
       // Ctrl+S or Cmd+S to save file
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         const saveBtn = document.getElementById('btn-save-file');
@@ -591,7 +600,7 @@
       });
 
       document.getElementById('modal-title').innerText = `${id ? 'Edit' : 'New'} Item`;
-      document.getElementById('modal-body').innerHTML = html + `<div class="hbox"><button class="btn" onclick="saveItem(${id})">Save</button> <button class="btn danger" onclick="closeModal()">Cancel</button></div>`;
+      document.getElementById('modal-body').innerHTML = html + `<div class="hbox"><button id="modal-confirm-btn" class="btn" onclick="saveItem(${id})">Save</button> <button class="btn danger" onclick="closeModal()">Cancel</button></div>`;
       document.getElementById('modal').style.display = 'flex';
     }
 
@@ -654,7 +663,7 @@
       `}).join('');
         html += `</div>`;
         html += `<div style="margin-top: 1rem;"><button class="btn" onclick="_tempSchema.push({name:'', type:'string'}); renderSchemaModal()">+ Add field</button></div>
-      <div style="margin-top: 1rem;"><button class="btn" onclick="saveSchema('${name}')">Save collection</button> <button class="btn danger" onclick="closeModal()">Cancel</button></div>`;
+      <div style="margin-top: 1rem;"><button id="modal-confirm-btn" class="btn" onclick="saveSchema('${name}')">Save collection</button> <button class="btn danger" onclick="closeModal()">Cancel</button></div>`;
 
         document.getElementById('modal-title').innerText = `${isNew ? 'New' : 'Edit'} Collection`;
         document.getElementById('modal-body').innerHTML = html;
@@ -750,7 +759,7 @@
         <div class="collection-perms-header"><h5>Collection</h5><span>Items</span><span>Schema</span></div>
         ${colRows}
         </div>
-      <div class="hbox"><button class="btn" onclick="saveKey()">Create Key</button> <button class="btn danger" onclick="closeModal()">Cancel</button></div>`;
+      <div class="hbox"><button id="modal-confirm-btn" class="btn" onclick="saveKey()">Create Key</button> <button class="btn danger" onclick="closeModal()">Cancel</button></div>`;
       openModal("New API Key", html);
     }
 
@@ -1296,7 +1305,7 @@ async function editFile(base, path) {
         <label>Name</label>
       </div>
       <div>
-        <button class="btn" onclick="createFile('${base}', '${esc(targetFolder)}')">Create</button> 
+        <button id="modal-confirm-btn" class="btn" onclick="createFile('${base}', '${esc(targetFolder)}')">Create</button> 
         <button class="btn danger" onclick="closeModal()">Cancel</button>
       </div>`;
       openModal(title, html);
@@ -1432,7 +1441,7 @@ async function editFile(base, path) {
         <label class="always-float">Lua Script Path</label>
       </div>
 
-      <div class="text-right mt-2" style="margin-top:1rem"><button class="btn" onclick="saveCron(${id})">Save</button> <button class="btn danger" onclick="closeModal()">Cancel</button></div>`;
+      <div class="text-right mt-2" style="margin-top:1rem"><button id="modal-confirm-btn" class="btn" onclick="saveCron(${id})">Save</button> <button class="btn danger" onclick="closeModal()">Cancel</button></div>`;
       openModal(`${id ? 'Edit' : 'New'} Cron Job`, html);
     }
 
