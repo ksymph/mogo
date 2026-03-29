@@ -543,6 +543,16 @@
 
       &.show { transform: translateY(0); }
     }
+    
+    #api-ref {
+      margin-top: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 1em;
+      ul {
+        padding-left: 1em;
+      }
+    }
 
     /* ----- utility classes (spacing, text, bg, flex) ----- */
 

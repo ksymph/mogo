@@ -1165,7 +1165,7 @@ async function editFile(base, path) {
 
       let apiBtnHtml = '';
       if (path.endsWith('.lua')) {
-        apiBtnHtml = `<button class="btn secondary" onclick="showApiDocs()">API</button> `;
+        apiBtnHtml = `<button class="btn secondary" onclick="showApiDocs()">Lua API Reference</button> `;
       }
 
       document.getElementById('pane-header').innerHTML = `
@@ -1226,44 +1226,69 @@ async function editFile(base, path) {
     }
 
     function showApiDocs() {
-      // ... (keep your existing showApiDocs function here) ...
-      document.getElementById('modal-title').innerText = "Lua Global API docs";
+      document.getElementById('modal-title').innerText = "Lua API Reference";
       document.getElementById('modal-body').innerHTML = `
-         <div style="font-size:0.9em; line-height:1.5;">
-           <p style="margin-bottom:8px">These globals are injected into Lua routes and schedules:</p>
-           <ul style="padding-left:1.5rem; margin-bottom:1rem;">
-             <li><code>log.info(msg) / log.warn(msg) / log.error(msg)</code> - Write to application log DB</li>
-             <li><code>http.get(url)</code> - HTTP GET request</li>
-             <li><code>http.request(url, params)</code> - HTTP request (params: method, headers, body)</li>
-           </ul>
-           <p style="margin-bottom:8px">In Lua routes, you have access to the <code>req</code> object:</p>
-           <ul style="padding-left:1.5rem;">
-             <li><code>req.query.abc</code> - URL query parameters</li>
-             <li><code>req.form.abc</code> / <code>req.body.abc</code> - Form/JSON parsed body</li>
-             <li><code>req.files.myFile</code> - Uploaded files (with <code>:save(dest)</code>, <code>.size</code>, <code>.filename</code>)</li>
-           </ul>
-         </div>
-       `;
-      document.getElementById('modal').style.display = 'flex';
-    }
+         <div id="api-ref">
+    <div>
+    <h5>req (Request Table)</h5>
+    <ul>
+        <li><b>req.method</b>, <b>req.path</b> <i>(string)</i> - HTTP method and path</li>
+        <li><b>req.query</b>, <b>req.params</b> <i>(table)</i> - URL query string and parsed route parameters</li>
+        <li><b>req.headers</b>, <b>req.cookies</b> <i>(table)</i> - Request headers (lowercase keys) and cookies</li>
+        <li><b>req.body</b> <i>(string/table)</i> - Parsed JSON, form data, or raw string</li>
+        <li><b>req.files.<i>field</i></b> <i>(table)</i> - Uploaded files containing <b>filename</b>, <b>size</b>, and <b>save(destPath)</b> <i>(function returning boolean)</i></li>
+    </ul>
+    </div>
+    <div>
+    <h5>res (Response Table)</h5>
+    <ul>
+        <li><b>res.status</b> <i>(number)</i> - HTTP status code (default: 200)</li>
+        <li><b>res.headers</b> <i>(table)</i> - Response headers</li>
+        <li><b>res.cookies.<i>name</i></b> <i>(table/string)</i> - Set cookies. Can be a string or table: <i>{value, path, http_only, secure, max_age, same_site, delete}</i></li>
+        <li><b>res:file(path, <i>[filename]</i>)</b> - Triggers a file download response</li>
+    </ul>
+    </div>
+    <div>
+    <h5>Implicit Returns</h5>
+    <p>Instead of manually setting <b>res.body</b>, you can directly return values from your handler function:</p>
+    <ul>
+        <li><i>return "content"</i> - Sets body to string, content-type to text/html</li>
+        <li><i>return {key="val"}</i> - Sets body to JSON, content-type to application/json</li>
+        <li><i>return 404, "Not Found"</i> - Sets status code and body simultaneously</li>
+    </ul>
+    </div>
+    <div>
+    <h5>db (Collections API)</h5>
+    <ul>
+        <li><b>db.<i>coll</i>:table()</b> - Returns all rows (automatically resolves relational fields into nested tables)</li>
+        <li><b>db.<i>coll</i>:find(query)</b> - Returns an array of rows matching the <i>query</i> table</li>
+        <li><b>db.<i>coll</i>:insert(data)</b> - Inserts a row and returns the new record (auto-generates <i>id</i>, <i>created</i>, <i>updated</i>)</li>
+        <li><b>db.<i>coll</i>:update(query, { $set = {...} })</b> - Updates matching records. Returns <i>boolean</i></li>
+        <li><b>db.<i>coll</i>:delete(query)</b> - Deletes matching records. Returns <i>boolean</i></li>
+        <li><b>db("SELECT * FROM tbl WHERE id = ?", id)</b> - Execute raw SQL. Returns table for SELECT/PRAGMA, or <i>boolean, rowsAffected</i> for mutations</li>
+    </ul>
+    </div>
+    <div>
+    <h5>http</h5>
+    <ul>
+        <li><b>http.get(url, <i>[opts]</i>)</b> - Performs a GET request</li>
+        <li><b>http.request(method, url, <i>[opts]</i>)</b> - Performs a custom HTTP request</li>
+    </ul>
+    <p><b>opts</b> is a table accepting <i>{headers = {key="val"}, body = "data"}</i>. Both functions return a table: <i>{status, body, headers}</i>.</p>
+    </div>
+    <div>
+    <h5>log</h5>
+    <ul>
+        <li><b>log.info(msg)</b>, <b>log.warn(msg)</b>, <b>log.error(msg)</b> - Writes to the system log database</li>
+        <li><b>log:get(<i>[limit]</i>)</b> - Retrieves the latest logs as an array of tables <i>{id, timestamp, level, origin, script, message}</i></li>
+    </ul>
+    </div>
+    <div>
+    <h5>Standard Libraries</h5>
+    <p>The standard Lua libraries <b>table</b>, <b>string</b>, <b>math</b>, and <b>coroutine</b> are fully available. The <b>os</b> library is restricted (dangerous functions are stripped) unless <i>UnsafeLua</i> is enabled in settings, which also exposes the <b>io</b> and <b>debug</b> libraries.</p>
+    </div>
+</div>
 
-    function showApiDocs() {
-      document.getElementById('modal-title').innerText = "Lua Global API docs";
-      document.getElementById('modal-body').innerHTML = `
-         <div style="font-size:0.9em; line-height:1.5;">
-           <p style="margin-bottom:8px">These globals are injected into Lua routes and schedules:</p>
-           <ul style="padding-left:1.5rem; margin-bottom:1rem;">
-             <li><code>log.info(msg) / log.warn(msg) / log.error(msg)</code> - Write to application log DB</li>
-             <li><code>http.get(url)</code> - HTTP GET request</li>
-             <li><code>http.request(url, params)</code> - HTTP request (params: method, headers, body)</li>
-           </ul>
-           <p style="margin-bottom:8px">In Lua routes, you have access to the <code>req</code> object:</p>
-           <ul style="padding-left:1.5rem;">
-             <li><code>req.query.abc</code> - URL query parameters</li>
-             <li><code>req.form.abc</code> / <code>req.body.abc</code> - Form/JSON parsed body</li>
-             <li><code>req.files.myFile</code> - Uploaded files (with <code>:save(dest)</code>, <code>.size</code>, <code>.filename</code>)</li>
-           </ul>
-         </div>
        `;
       document.getElementById('modal').style.display = 'flex';
     }

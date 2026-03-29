@@ -23,7 +23,6 @@ import (
 
 	"github.com/go-co-op/gocron/v2"
 	lua "github.com/yuin/gopher-lua"
-	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
 )
 
@@ -1354,21 +1353,6 @@ func handleAdminFiles(w http.ResponseWriter, r *http.Request) {
 // -----------------------------------------------------------------------------
 // 4. LUA EXTENSIONS & ENGINE
 // -----------------------------------------------------------------------------
-func hashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
-	return string(bytes), err
-}
-
-func injectSys(L *lua.LState) {
-	sysTbl := L.NewTable()
-	L.SetField(sysTbl, "hash_password", L.NewFunction(func(L *lua.LState) int {
-		hash, _ := hashPassword(L.CheckString(1))
-		L.Push(lua.LString(hash))
-		return 1
-	}))
-	L.SetGlobal("sys", sysTbl)
-}
-
 func injectDB(L *lua.LState) {
 	dbTbl := L.NewTable()
 	dbMeta := L.NewTable()
@@ -1862,7 +1846,6 @@ func createLuaState() *lua.LState {
 
 	// Inject Mogo API
 	injectDB(L)
-	injectSys(L)
 	injectMgoAPI(L)
 
 	return L
