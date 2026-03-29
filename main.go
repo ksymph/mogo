@@ -54,6 +54,7 @@ type Settings struct {
 
 	LogRetentionDays int  `json:"log_retention_days"`
 	UnsafeLua        bool `json:"unsafe_lua"`
+	Port             int  `json:"port"`
 }
 
 var appSettings Settings
@@ -68,6 +69,7 @@ func loadSettings() {
 	appSettings.RateLimitBurst = 200
 	appSettings.AdminMaxRetries = 5
 	appSettings.LogRetentionDays = 30
+	appSettings.Port = 8080
 
 	b, err := os.ReadFile(filepath.Join(dataPath, "settings.json"))
 	if err == nil {
@@ -2334,11 +2336,17 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	rootDir = "."
+	cliPort := 0
 	for _, arg := range os.Args[1:] {
 		if strings.HasPrefix(arg, "--dir=") {
 			rootDir = strings.TrimPrefix(arg, "--dir=")
 		}
-	}
+		if strings.HasPrefix(arg, "--port=") {
+			if p, err := strconv.Atoi(strings.TrimPrefix(arg, "--port=")); err == nil {
+				cliPort = p
+			}
+		}
+}
 
 	dataPath = filepath.Join(rootDir, "data")
 	publicPath = filepath.Join(rootDir, "public")
@@ -2431,8 +2439,17 @@ func main() {
 		mogoHandler(w, r)
 	}))
 
-	log.Println("Starting Mogo Admin API on http://localhost:8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	finalPort := appSettings.Port
+	if cliPort != 0 {
+		finalPort = cliPort
+	}
+	if finalPort <= 0 {
+		finalPort = 8080
+	}
+
+	addr := fmt.Sprintf(":%d", finalPort)
+	log.Printf("Starting Mogo Admin API on http://localhost%s", addr)
+	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatal(err)
 	}
 }
