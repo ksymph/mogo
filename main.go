@@ -1888,6 +1888,46 @@ func injectMgoAPI(L *lua.LState) {
 		appLog("error", getScript(L), "lua", L.CheckString(1))
 		return 0
 	}))
+	L.SetField(logMod, "get", L.NewFunction(func(L *lua.LState) int {
+		limit := 1
+		argIdx := 1
+		// Handle colon syntax `log:get(5)` where the module table is the first argument
+		if L.GetTop() >= 1 && L.Get(1).Type() == lua.LTTable {
+			argIdx = 2
+		}
+		if L.GetTop() >= argIdx {
+			limit = L.CheckInt(argIdx)
+		}
+		if limit <= 0 {
+			limit = 1
+		}
+
+		arr := L.NewTable()
+		if logDBConn != nil {
+			rows, err := logDBConn.Query("SELECT id, timestamp, level, origin, script_path, message FROM _logs ORDER BY id DESC LIMIT ?", limit)
+			if err == nil {
+				defer rows.Close()
+				i := 1
+				for rows.Next() {
+					var id int
+					var timestamp, level, origin, script, message string
+					if err := rows.Scan(&id, &timestamp, &level, &origin, &script, &message); err == nil {
+						row := L.NewTable()
+						row.RawSetString("id", lua.LNumber(id))
+						row.RawSetString("timestamp", lua.LString(timestamp))
+						row.RawSetString("level", lua.LString(level))
+						row.RawSetString("origin", lua.LString(origin))
+						row.RawSetString("script", lua.LString(script))
+						row.RawSetString("message", lua.LString(message))
+						arr.RawSetInt(i, row)
+						i++
+					}
+				}
+			}
+		}
+		L.Push(arr)
+		return 1
+	}))
 	L.SetGlobal("log", logMod)
 
 	httpMod := L.NewTable()
