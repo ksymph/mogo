@@ -621,8 +621,10 @@
       window._tempSchema = [...schema];
       window._tempColName = name || '';
 
+      let isInitialRender = true;
       function render() {
-        if (document.getElementById('col-name')) window._tempColName = document.getElementById('col-name').value;
+        if (!isInitialRender && document.getElementById('col-name')) window._tempColName = document.getElementById('col-name').value;
+        isInitialRender = false;
         let html = ``;
         if (isNew) html += `<div class="form-field"><input id="col-name" placeholder="" required value="${window._tempColName}"><label>Collection name</label></div>`;
 
