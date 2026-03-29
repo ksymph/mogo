@@ -1109,19 +1109,19 @@ async function loadSettings(sub = 'admin') {
         for (let k in node) {
           let path = prefix ? prefix + "/" + k : k;
           if (node[k] === null) {
-            html += `<li class="tree-item" onclick="editFile('${base}', '${esc(path)}')">
+            html += `<li class="tree-item" data-path="${esc(path)}" onclick="editFile('${base}', '${esc(path)}')">
             <span class="tree-label" title="${k}">📄 ${k}</span>
             <div class="tree-actions">
-              <span class="del" onclick="event.stopPropagation(); deleteFile('${base}', '${esc(path)}')" title="Delete File">✕</span>
+              <span class="del" onclick="event.stopPropagation(); deleteFile('${base}', '${esc(path)}')" title="Delete File"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
             </div>
           </li>`;
           } else {
             html += `<details>
-            <summary class="tree-item">
+            <summary class="tree-item" data-path="${esc(path)}">
               <span class="tree-label" title="${k}">📁 ${k}</span>
               <div class="tree-actions">
-                <span onclick="event.preventDefault(); newFileModal('${base}', '${esc(path)}')" title="New in Folder">+</span>
-                <span class="del" onclick="event.preventDefault(); deleteFile('${base}', '${esc(path)}')" title="Delete Folder">✕</span>
+                <span onclick="event.preventDefault(); newFileModal('${base}', '${esc(path)}')" title="New in Folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m-7-7h14"/></svg></span>
+                <span class="del" onclick="event.preventDefault(); deleteFile('${base}', '${esc(path)}')" title="Delete Folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
               </div>
             </summary>
             <ul>${buildHtml(node[k], path)}</ul>
@@ -1138,10 +1138,10 @@ async function loadSettings(sub = 'admin') {
       <div class="file-tree">
         <div>
           <details open>
-            <summary class="tree-item">
+            <summary class="tree-item root-item">
               <span class="tree-label">📁 ${folderName}</span>
               <div class="tree-actions">
-                <span onclick="newFileModal('${base}', '')" title="New file/folder">+</span>
+                <span onclick="event.preventDefault(); newFileModal('${base}', '')" title="New file/folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m-7-7h14"/></svg></span>
               </div>
             </summary>
             <ul>${buildHtml(tree) || `<i class="text-muted ml-6 text-sm">empty folder</i>`}</ul>
@@ -1159,7 +1159,9 @@ async function loadSettings(sub = 'admin') {
     const extMap = { 'js': 'javascript', 'ts': 'typescript', 'py': 'python', 'sh': 'bash', 'md': 'markdown' };
 
 async function editFile(base, path) {
-      document.querySelectorAll('.sub-sidebar .sub-item').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.sub-sidebar .sub-item, .sub-sidebar .tree-item').forEach(el => el.classList.remove('active'));
+      let activeItem = document.querySelector(`.sub-sidebar .tree-item[data-path="${esc(path)}"]`);
+      if (activeItem) activeItem.classList.add('active');
 
       let apiBtnHtml = '';
       if (path.endsWith('.lua')) {
@@ -1168,7 +1170,7 @@ async function editFile(base, path) {
 
       document.getElementById('pane-header').innerHTML = `
       <h2 style="font-family: monospace; font-size:1.2rem;">${path}</h2>
-      <div>${apiBtnHtml}<button id="btn-save-file" class="btn" disabled onclick="saveFile('${base}', '${esc(path)}')">Save changes</button></div>
+      <div>${apiBtnHtml}<button id="btn-save-file" class="btn" disabled onclick="saveFile('${base}', '${esc(path)}')" title="Ctrl+S">Save changes</button></div>
     `;
       if (path.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
         document.getElementById('pane-content').innerHTML = `<img src="/api/files?base=${base}&path=${path}&raw=true" style="max-width:100%;max-height:80vh">`;
@@ -1210,10 +1212,8 @@ async function editFile(base, path) {
               // Only enable the save button if the content actually changed
               if (code !== state.currentFileContent) {
                 btn.disabled = false;
-                btn.innerText = "Save changes *";
               } else {
                 btn.disabled = true;
-                btn.innerText = "Save changes";
               }
             }
           }
@@ -1337,7 +1337,7 @@ async function editFile(base, path) {
 
     // ---------- cron jobs ----------
     async function loadCronJobs() {
-      document.querySelectorAll('.sub-sidebar .sub-item').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.sub-sidebar .sub-item, .sub-sidebar .tree-item').forEach(el => el.classList.remove('active'));
       let btn = document.getElementById('edit-schedules-btn');
       if (btn) btn.classList.add('active');
 
