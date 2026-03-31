@@ -82,13 +82,13 @@ The `req` table contains all information about the incoming HTTP request.
 *   **`req.path`** *(string)*: e.g., `"/api/hello"`
 *   **`req.query`** *(table)*: URL query parameters (`?name=John` -> `req.query.name`)
 *   **`req.params`** *(table)*: Dynamic route parameters (`[id].lua` -> `req.params.id`)
-*   **`req.headers`** *(table)*: Request headers (keys are lowercase, e.g. `Content-Type` -> `content-type`)
+*   **`req.headers`** *(table)*: Request headers, e.g. `Content-Type == "text/html"`
 *   **`req.cookies`** *(table)*: Request cookies
 *   **`req.body`** *(string/table)*: The parsed JSON body, form data, or raw string
 *   **`req.files`** *(table)*: Uploaded multipart files
     *   `req.files.myFile.filename`: Name of sent file
     *   `req.files.myFile.size`: File size in bytes
-    *   `req.files.myFile.save(destPath)`: Save the file to disk. Returns `true` on success. *(Note: locked to the `public/` folder unless Unsafe Lua is enabled).*
+    *   `req.files.myFile.save(destPath)`: Save the file to disk, returns `true` on success *(note: uploads must be in `uploads/` folder unless Unsafe Lua is enabled).*
 
 ### 3. The `res` Object & Implicit Returns
 You can manipulate the response manually using the `res` table, or use implicit returns. You can combine the two approaches, e.g. `res.status = 404` then `return "404: file not found` is valid. If using only the response object, returning it is recommended for clarity, though not required.
@@ -116,10 +116,10 @@ Mogo exposes a powerful CRUD API for your collections, as well as a raw SQL exec
 *   **`db.<collection>:table()`**: Returns an array of all items in the specified collection
 *   **`db.<collection>:find(query)`**: Returns array of items matching the given table
     *   *Example:* `db.users:find({ active = true })` `db.users:find({ firstName = "John", lastName = "Doe"})`
-*   **`db.<collection>:insert(data)`**: Inserts a row and returns the new record; `id`, `created`, and `updated` are auto-generated
+*   **`db.<collection>:insert(data)`**: Inserts a row and returns the new record; `id`, `created`, and `updated` are auto-generated; returns new item id
     *   *Example:* `db.users:insert({ firstName = "Alice", age = 30 })`
-*   **`db.<collection>:update(query, { $set = {...} })`**: Updates items matching the query; returns a success boolean
-    *   *Example:* `db.users:update({ id = 1 }, { $set = { age = 31 } })`
+*   **`db.<collection>:update(query, { foo = "bar", baz = nil })`**: Updates items matching the query with given table values; returns a success boolean
+    *   *Example:* `db.users:update({ id = 1 }, { age = 31 })`
 *   **`db.<collection>:delete(query)`**: Deletes matching records; returns a success boolean
 *   **Raw SQL**: Call the `db` object directly for advanced queries. Returns a table of results for `SELECT`/`PRAGMA`, or `true, rowsAffected` for mutations.
     *   *Example:* `local users = db("SELECT * FROM users WHERE age > ?", 18)`

@@ -35,6 +35,7 @@ var (
 	publicPath  string
 	routesPath  string
 	scriptsPath string
+	uploadsPath string
 )
 
 // -----------------------------------------------------------------------------
@@ -63,6 +64,7 @@ func loadSettings() {
 	os.MkdirAll(scriptsPath, os.ModePerm)
 	os.MkdirAll(routesPath, os.ModePerm)
 	os.MkdirAll(publicPath, os.ModePerm)
+	os.MkdirAll(uploadsPath, os.ModePerm)
 
 	appSettings.RateLimitRPS = 100
 	appSettings.RateLimitBurst = 200
@@ -1561,20 +1563,16 @@ func injectDB(L *lua.LState) {
 				return 2
 			}
 			id, _ := res.LastInsertId()
-			data["id"] = id
-			L.Push(mapToLTable(L, data))
+			L.Push(lua.LNumber(id))
 			return 1
 		}))
 
-		// db.<collection>:update(query, { $set = {...} })
+		// db.<collection>:update(query, updateMap)
 		colTbl.RawSetString("update", L.NewFunction(func(L *lua.LState) int {
 			cName := L.CheckTable(1).RawGetString("_name").String()
 			queryMap, _ := luaValueToInterface(L.OptTable(2, L.NewTable())).(map[string]any)
 			updateMap, _ := luaValueToInterface(L.OptTable(3, L.NewTable())).(map[string]any)
 
-			if setObj, ok := updateMap["$set"].(map[string]any); ok {
-				updateMap = setObj
-			}
 			updateMap["updated"] = time.Now().Format("2006-01-02 15:04:05")
 
 			whereVals, whereCols := []any{}, []string{"1=1"}
@@ -1938,7 +1936,7 @@ func luaHttpRequestReal(L *lua.LState, method string) int {
 	}
 
 	if headersVal := opts.RawGetString("headers"); headersVal.Type() == lua.LTTable {
-		headersVal.(*lua.LTable).ForEach(func(k, v lua.LValue) { req.Header.Set(k.String(), v.String()) })
+		headersVal.(*lua.LTable).ForEach(func(k, v lua.LValue) { req.Header[k.String()] = []string{v.String()} })
 	}
 	if reqBody != nil && req.Header.Get("Content-Type") == "" {
 		req.Header.Set("Content-Type", "application/json")
@@ -2093,7 +2091,7 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 	headerTable := L.NewTable()
 	for k, v := range r.Header {
 		if len(v) > 0 {
-			headerTable.RawSetString(strings.ToLower(k), lua.LString(v[0]))
+			headerTable.RawSetString(k, lua.LString(v[0]))
 		}
 	}
 	reqTable.RawSetString("headers", headerTable)
@@ -2137,17 +2135,29 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 				saveFunc := L.NewFunction(func(L *lua.LState) int {
 					destPath := L.CheckString(2)
 
+					targetPath := destPath
+					if !filepath.IsAbs(targetPath) {
+						targetPath = filepath.Join(rootDir, targetPath)
+					}
+					absTarget, err := filepath.Abs(targetPath)
+					if err != nil {
+						L.Push(lua.LBool(false))
+						L.Push(lua.LString(err.Error()))
+						return 2
+					}
+
 					// Security Jail check
 					if !appSettings.UnsafeLua {
-						absBase, _ := filepath.Abs(publicPath)
-						absTarget, _ := filepath.Abs(filepath.Join(publicPath, destPath))
-						if !strings.HasPrefix(absTarget, absBase) {
+						absUploads, _ := filepath.Abs(uploadsPath)
+						if absTarget != absUploads && !strings.HasPrefix(absTarget, absUploads+string(filepath.Separator)) {
+							appLog("warn", getScript(L), "security", "Blocked attempt to write file outside uploads directory: "+destPath)
 							L.Push(lua.LBool(false))
 							L.Push(lua.LString("access denied: path escapes secure directory"))
 							return 2
 						}
-						destPath = absTarget
 					}
+
+					os.MkdirAll(filepath.Dir(absTarget), os.ModePerm)
 
 					srcFile, err := fileHeader.Open()
 					if err != nil {
@@ -2157,7 +2167,7 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 					}
 					defer srcFile.Close()
 
-					destFile, err := os.Create(destPath)
+					destFile, err := os.Create(absTarget)
 					if err != nil {
 						L.Push(lua.LBool(false))
 						L.Push(lua.LString(err.Error()))
@@ -2305,7 +2315,7 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Apply Headers
 	resHeaders.ForEach(func(k, v lua.LValue) {
-		w.Header().Set(k.String(), v.String())
+		w.Header()[k.String()] = []string{v.String()}
 	})
 
 	// Dispatch Response Status and Body
@@ -2329,12 +2339,13 @@ func main() {
 				cliPort = p
 			}
 		}
-}
+	}
 
 	dataPath = filepath.Join(rootDir, "data")
 	publicPath = filepath.Join(rootDir, "public")
 	routesPath = filepath.Join(rootDir, "routes")
 	scriptsPath = filepath.Join(rootDir, "scripts")
+	uploadsPath = filepath.Join(rootDir, "uploads")
 
 	loadSettings()
 	initDB()
