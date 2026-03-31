@@ -86,9 +86,9 @@ The `req` table contains all information about the incoming HTTP request.
 *   **`req.cookies`** *(table)*: Request cookies
 *   **`req.body`** *(string/table)*: The parsed JSON body, form data, or raw string
 *   **`req.files`** *(table)*: Uploaded multipart files
-    *   `req.files.myFile.filename`: Original file name
+    *   `req.files.myFile.filename`: Name of sent file
     *   `req.files.myFile.size`: File size in bytes
-    *   `req.files.myFile.save(destPath)`: Saves the file. Returns `true` on success. *(Note: locked to the `public/` folder unless Unsafe Lua is enabled).*
+    *   `req.files.myFile.save(destPath)`: Save the file to disk. Returns `true` on success. *(Note: locked to the `public/` folder unless Unsafe Lua is enabled).*
 
 ### 3. The `res` Object & Implicit Returns
 You can manipulate the response manually using the `res` table, or use implicit returns. You can combine the two approaches, e.g. `res.status = 404` then `return "404: file not found` is valid. If using only the response object, returning it is recommended for clarity, though not required.
@@ -100,7 +100,7 @@ You can manipulate the response manually using the `res` table, or use implicit 
     *   Simple: `res.cookies.session = "123"`
     *   Advanced: `res.cookies.session = { value="123", http_only=true, secure=true, max_age=3600 }`
     *   Delete: `res.cookies.session = { delete=true }`
-*   **`res:file(path, [filename])`**: Triggers a file download response.
+*   **`res:file(path, [filename])`**: Send a file to be downloaded by the client
 
 **Implicit Returns:**
 Instead of modifying `res.body`, you can simply return values:
