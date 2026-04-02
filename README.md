@@ -127,14 +127,13 @@ Mogo exposes a powerful CRUD API for your collections, as well as a raw SQL exec
 ### 5. HTTP Client (`http`)
 Make outbound HTTP requests from your scripts.
 
-*   **`http.get(url, [opts])`**
-*   **`http.request(method, url, [opts])`**
+*   **`http(method, url, [opts])`**
 
 **opts:** A table accepting `{ headers = { ["Authorization"] = "Bearer token" }, body = "data" }`
 **Returns:** A table containing `{ status, body, headers }`
 
 ```lua
-local res = http.get("https://api.github.com/users/octocat")
+local res = http("GET", "https://api.github.com/users/octocat")
 if res.status == 200 then
     return res.body
 end

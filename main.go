@@ -1913,10 +1913,7 @@ func injectMgoAPI(L *lua.LState) {
 	}))
 	L.SetGlobal("log", logMod)
 
-	httpMod := L.NewTable()
-	L.SetField(httpMod, "get", L.NewFunction(luaHttpGet))
-	L.SetField(httpMod, "request", L.NewFunction(luaHttpRequest))
-	L.SetGlobal("http", httpMod)
+	L.SetGlobal("http", L.NewFunction(luaHttpRequest))
 }
 
 func luaHttpRequestReal(L *lua.LState, method string) int {
@@ -1968,7 +1965,6 @@ func luaHttpRequestReal(L *lua.LState, method string) int {
 	return 1
 }
 
-func luaHttpGet(L *lua.LState) int { return luaHttpRequestReal(L, "GET") }
 func luaHttpRequest(L *lua.LState) int {
 	method := L.CheckString(1)
 	L.Remove(1)
