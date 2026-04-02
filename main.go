@@ -2016,16 +2016,21 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	L := luaPool.Get().(*lua.LState)
-	defer luaPool.Put(L)
-
 	top := L.GetTop()
-	defer L.SetTop(top)
 
 	// Timeouts for requests to prevent infinite loops (DOS protection)
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-	defer cancel()
 	L.SetContext(ctx)
-	defer L.RemoveContext()
+
+	handoff := false
+	defer func() {
+		cancel()
+		if !handoff {
+			L.RemoveContext()
+			L.SetTop(top)
+			luaPool.Put(L)
+		}
+	}()
 
 	fn, err := L.LoadFile(route.FilePath)
 	if err != nil {
@@ -2232,32 +2237,36 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 	resHeaders := resTable.RawGetString("headers").(*lua.LTable)
 	nRet := L.GetTop() - callTop
 
-	// Process implicit Returns
+	var postHook *lua.LFunction
+	var bodyVal lua.LValue
+
+	// Process Returns
 	if nRet > 0 {
-		first := L.Get(callTop + 1)
-		if nRet == 1 {
+		last := L.Get(callTop + nRet)
+		if last.Type() == lua.LTFunction {
+			postHook = last.(*lua.LFunction)
+			nRet--
+		}
+
+		if nRet > 0 {
+			first := L.Get(callTop + 1)
 			if first.Type() == lua.LTString {
-				resTable.RawSetString("body", first)
+				bodyVal = first
 				if resHeaders.RawGetString("Content-Type") == lua.LNil {
 					resHeaders.RawSetString("Content-Type", lua.LString("text/html"))
 				}
-			} else if first.Type() == lua.LTTable {
+			} else if first.Type() == lua.LTTable && first != resTable {
 				b, _ := json.Marshal(luaValueToInterface(first))
-				resTable.RawSetString("body", lua.LString(string(b)))
+				bodyVal = lua.LString(string(b))
 				if resHeaders.RawGetString("Content-Type") == lua.LNil {
 					resHeaders.RawSetString("Content-Type", lua.LString("application/json"))
 				}
 			}
-		} else if nRet >= 2 {
-			second := L.Get(callTop + 2)
-			if first.Type() == lua.LTNumber && second.Type() == lua.LTString {
-				resTable.RawSetString("status", first)
-				resTable.RawSetString("body", second)
-				if resHeaders.RawGetString("Content-Type") == lua.LNil {
-					resHeaders.RawSetString("Content-Type", lua.LString("text/html"))
-				}
-			}
 		}
+	}
+
+	if bodyVal != nil {
+		resTable.RawSetString("body", bodyVal)
 	}
 
 	// Set Cookies
@@ -2301,11 +2310,35 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	launchPostHook := func() {
+		if postHook != nil {
+			handoff = true
+			L.RemoveContext() // clear the HTTP request context bound to L
+			go func(state *lua.LState, hook *lua.LFunction, lTop int, rPath string) {
+				defer func() {
+					state.RemoveContext()
+					state.SetTop(lTop)
+					luaPool.Put(state)
+				}()
+
+				bgCtx, bgCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+				defer bgCancel()
+				state.SetContext(bgCtx)
+
+				state.Push(hook)
+				if err := state.PCall(0, 0, nil); err != nil {
+					appLog("error", rPath, "post-hook", err.Error())
+				}
+			}(L, postHook, top, route.FilePath)
+		}
+	}
+
 	// Trigger File Download
 	if filePath := resTable.RawGetString("_file_path"); filePath.Type() == lua.LTString {
 		fileName := resTable.RawGetString("_file_name").String()
 		w.Header().Set("Content-Disposition", "attachment; filename=\""+fileName+"\"")
 		http.ServeFile(w, r, filePath.String())
+		launchPostHook()
 		return
 	}
 
@@ -2318,9 +2351,11 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 	status := int(resTable.RawGetString("status").(lua.LNumber))
 	w.WriteHeader(status)
 
-	if bodyVal := resTable.RawGetString("body"); bodyVal.Type() == lua.LTString {
-		w.Write([]byte(bodyVal.String()))
+	if finalBody := resTable.RawGetString("body"); finalBody.Type() == lua.LTString {
+		w.Write([]byte(finalBody.String()))
 	}
+
+	launchPostHook()
 }
 
 func main() {

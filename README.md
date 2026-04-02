@@ -90,10 +90,12 @@ The `req` table contains all information about the incoming HTTP request.
     *   `req.files.myFile.size`: File size in bytes
     *   `req.files.myFile.save(destPath)`: Save the file to disk, returns `true` on success *(note: uploads must be in `uploads/` folder unless Unsafe Lua is enabled).*
 
-### 3. The `res` Object & Implicit Returns
-You can manipulate the response manually using the `res` table, or use implicit returns. You can combine the two approaches, e.g. `res.status = 404` then `return "404: file not found` is valid. If using only the response object, returning it is recommended for clarity, though not required.
+### 3. Sending responses
+The simplest way of sending a response is by returning a value; if a string, it sends as HTML, and if a table, it sends as JSON, with all the necessary headers. For more advanced usage, you can manipulate the response object `res` directly. You can combine the two approaches, e.g. `res.status = 404` then `return "404: file not found` would send as HTML with status code 404 (`res` manipulations override any returned data). Note that the response object should not be returned, even if no text or table is returned.
 
-**Manual Response:**
+You can also return a function to be called after the response is sent. It should be returned last (i.e. second if returning text/table, first and only if manipulating `res` directly).
+
+**Response object:**
 *   **`res.status`** *(number)*: HTTP status code (default `200`)
 *   **`res.headers`** *(table)*: Response headers
 *   **`res.cookies`** *(table)*: Set cookies
@@ -102,12 +104,17 @@ You can manipulate the response manually using the `res` table, or use implicit 
     *   Delete: `res.cookies.session = { delete=true }`
 *   **`res:file(path, [filename])`**: Send a file to be downloaded by the client
 
-**Implicit Returns:**
-Instead of modifying `res.body`, you can simply return values:
+**Examples:**
 ```lua
-return "<h1>Hello, world!</h1>"      -- string: 200 OK, text/html
-return { user = "Alice", age = 25 }  -- table: 200 OK, application/json
-return 404, "Not Found"              -- number, string|table: 404 Not Found, text/html
+return "<h1>Hello, world!</h1>"
+-- 200 OK, text/html
+
+return { user = "Alice", age = 25 }, function() log.info "added user" end
+-- 200 OK, application/json
+
+res.status = 403
+res.body = "403 Forbidden"
+return function() log.info("Tried to access " .. req.path) end
 ```
 
 ### 4. Database API (`db`)
