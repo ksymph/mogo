@@ -1172,7 +1172,7 @@ async function loadSettings(sub = 'admin') {
                 <span onclick="event.preventDefault(); newFileModal('${base}', '')" title="New file/folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m-7-7h14"/></svg></span>
               </div>
             </summary>
-            <ul>${buildHtml(tree) || `<i class="text-muted ml-6 text-sm">empty folder</i>`}</ul>
+            <ul>${buildHtml(tree) || `<i class="text-muted ml-6 text-sm">&nbsp&nbspempty folder</i>`}</ul>
           </details>
           
         </div>
@@ -1368,6 +1368,8 @@ async function editFile(base, path) {
     async function createFile(base, targetFolder) {
       let name = document.getElementById('nf-name').value;
       let type = document.getElementById('nf-type').value;
+      let insertSpaces = localStorage.getItem('mogo_editor_insertSpaces') === 'false';
+      let tabSize = localStorage.getItem('mogo_editor_tabSize') || '3';
       if (!name) return;
 
       let isDir = type === 'folder';
@@ -1376,11 +1378,20 @@ async function editFile(base, path) {
       let content = "";
       if (!isDir) {
         if (base === 'routes') {
-          content = "return {\n  GET = function(req)\n    return \"<h1>Hello, world!</h1>\"\n  end\n}";
+          let indent;
+          if (insertSpaces) {
+            indent = '\t';
+          } else {            
+            let size = parseInt(tabSize, 10);
+            if (isNaN(size)) size = 3;
+            indent = ' '.repeat(size);
+          }
+          let template = "return {\n\tGET = function(req)\n\t\treturn \"<h1>Hello, world!</h1>\"\n\tend\n}";
+          content = template.replace(/\t/g, indent);
         } else if (base === 'schedules') {
           content = "log.info(\"Hello, world!\")";
-        } else {
-          content = "Hello, world!";
+        } else if (type === 'html') {
+          content = "<h1>Hello, world!</h1>";
         }
       }
 
