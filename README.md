@@ -118,18 +118,21 @@ return function() log.info("Tried to access " .. req.path) end
 ```
 
 ### 4. Database API (`db`)
-Mogo exposes a powerful CRUD API for your collections, as well as a raw SQL executor. Relations are automatically resolved into nested Lua tables when fetched.
+Mogo has a simple CRUD API for collections. Relations are automatically resolved into nested Lua tables when fetched.
 
-*   **`db.<collection>:table()`**: Returns an array of all items in the specified collection
-*   **`db.<collection>:find(query)`**: Returns array of items matching the given table
-    *   *Example:* `db.users:find({ active = true })` `db.users:find({ firstName = "John", lastName = "Doe"})`
+*   **`db.<collection>:get(query, [limit], [sort_by])`**: Returns array of items matching the given table. Note that even if only one is returned, it's in an array. Also, for advanced SQL manipulation, raw SQL statements can be executed by calling `db` as a function.
+    *  `db.users:get{ firstName = "John", lastName = "Doe" }`
+    *  `db.users:get({ active = true }, 0, "created" )` (pass a limit of 0 to get all)
+    *  `local user = db.users:get({ last_name = "Doe" }, 1 )[1]`
 *   **`db.<collection>:insert(data)`**: Inserts a row and returns the new record; `id`, `created`, and `updated` are auto-generated; returns new item id
-    *   *Example:* `db.users:insert({ firstName = "Alice", age = 30 })`
+    *   `uid = db.users:insert({ firstName = "Alice", age = 30 })`
 *   **`db.<collection>:update(query, { foo = "bar", baz = nil })`**: Updates items matching the query with given table values; returns a success boolean
-    *   *Example:* `db.users:update({ id = 1 }, { age = 31 })`
+    *   `success = db.users:update({ id = 1 }, { age = 31 })`
 *   **`db.<collection>:delete(query)`**: Deletes matching records; returns a success boolean
-*   **Raw SQL**: Call the `db` object directly for advanced queries. Returns a table of results for `SELECT`/`PRAGMA`, or `true, rowsAffected` for mutations.
-    *   *Example:* `local users = db("SELECT * FROM users WHERE age > ?", 18)`
+*   **Raw SQL**: Call the `db` object as a function for direct SQL queries. Returns a table of results for `SELECT`/`PRAGMA`, and `true, rowsAffected` for mutations. Note that system SQL tables are: `_api_keys`, `_collections`, `_cron_jobs`, `schema`
+    *   `local users = db("SELECT * FROM users WHERE age > ?", 18)`
+*   **Relations**: Relational fields are automatically expanded as nested tables
+    *   `local user = db.messages({}, 1, "created)[1] -- user.id == 1`
 
 ### 5. HTTP Client (`http`)
 Make outbound HTTP requests from your scripts.

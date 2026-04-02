@@ -47,10 +47,10 @@ type Settings struct {
 	BackupSched     string `json:"backup_sched"`
 	BackupSchedMeta string `json:"backup_sched_meta"`
 
-	AllowedOrigins      string  `json:"allowed_origins"`
-	RateLimitRPS        float64 `json:"rate_limit_rps"`
-	RateLimitBurst      int     `json:"rate_limit_burst"`
-	AdminMaxRetries int `json:"admin_max_retries"`
+	AllowedOrigins  string  `json:"allowed_origins"`
+	RateLimitRPS    float64 `json:"rate_limit_rps"`
+	RateLimitBurst  int     `json:"rate_limit_burst"`
+	AdminMaxRetries int     `json:"admin_max_retries"`
 
 	LogRetentionDays int  `json:"log_retention_days"`
 	UnsafeLua        bool `json:"unsafe_lua"`
@@ -1363,9 +1363,52 @@ func injectDB(L *lua.LState) {
 		colTbl := L.NewTable()
 		colTbl.RawSetString("_name", lua.LString(colName))
 
-		// db.<collection>:table()
-		colTbl.RawSetString("table", L.NewFunction(func(L *lua.LState) int {
+		// db.<collection>:get(query, limit, sortBy)
+		colTbl.RawSetString("get", L.NewFunction(func(L *lua.LState) int {
 			cName := L.CheckTable(1).RawGetString("_name").String()
+
+			whereVals := []any{}
+			whereCols := []string{"1=1"}
+
+			// query
+			if L.GetTop() >= 2 && L.Get(2).Type() == lua.LTTable {
+				queryTbl := L.CheckTable(2)
+				if queryMap, ok := luaValueToInterface(queryTbl).(map[string]any); ok {
+					for k, v := range queryMap {
+						whereCols = append(whereCols, fmt.Sprintf("%s = ?", k))
+						whereVals = append(whereVals, v)
+					}
+				}
+			}
+
+			// limit
+			limit := 0
+			if L.GetTop() >= 3 && L.Get(3).Type() == lua.LTNumber {
+				limit = L.CheckInt(3)
+			}
+
+			// sortBy
+			sortBy := ""
+			if L.GetTop() >= 4 && L.Get(4).Type() == lua.LTString {
+				sortBy = L.CheckString(4)
+			}
+
+			orderClause := "ORDER BY id ASC"
+			if sortBy != "" {
+				sortCol := sortBy
+				// Default to descending sort if not explicitly specified to fulfill "most recently created" usecase
+				if !strings.Contains(strings.ToUpper(sortCol), " ASC") && !strings.Contains(strings.ToUpper(sortCol), " DESC") {
+					sortCol += " DESC"
+				}
+				orderClause = "ORDER BY " + sortCol
+			}
+
+			limitClause := ""
+			if limit > 0 {
+				limitClause = fmt.Sprintf("LIMIT %d", limit)
+			}
+
+			q := fmt.Sprintf("SELECT * FROM %s WHERE %s %s %s", cName, strings.Join(whereCols, " AND "), orderClause, limitClause)
 
 			// Cache to prevent duplicate tables / circular references
 			tableCache := make(map[string]*lua.LTable)
@@ -1479,7 +1522,7 @@ func injectDB(L *lua.LState) {
 				return tbl
 			}
 
-			results, err := queryDB(dbConn, fmt.Sprintf("SELECT * FROM %s ORDER BY id ASC", cName))
+			results, err := queryDB(dbConn, q, whereVals...)
 			if err != nil {
 				L.Push(L.NewTable())
 				return 1
@@ -1493,35 +1536,6 @@ func injectDB(L *lua.LState) {
 				}
 			}
 
-			L.Push(arr)
-			return 1
-		}))
-
-		// db.<collection>:find(query)
-		colTbl.RawSetString("find", L.NewFunction(func(L *lua.LState) int {
-			cName := L.CheckTable(1).RawGetString("_name").String()
-			queryTbl := L.OptTable(2, L.NewTable())
-
-			whereVals := []any{}
-			whereCols := []string{"1=1"}
-			if queryMap, ok := luaValueToInterface(queryTbl).(map[string]any); ok {
-				for k, v := range queryMap {
-					whereCols = append(whereCols, fmt.Sprintf("%s = ?", k))
-					whereVals = append(whereVals, v)
-				}
-			}
-
-			q := fmt.Sprintf("SELECT * FROM %s WHERE %s ORDER BY id ASC", cName, strings.Join(whereCols, " AND "))
-			results, err := queryDB(dbConn, q, whereVals...)
-			if err != nil {
-				L.Push(L.NewTable())
-				return 1
-			}
-
-			arr := L.NewTable()
-			for i, r := range results {
-				arr.RawSetInt(i+1, mapToLTable(L, r))
-			}
 			L.Push(arr)
 			return 1
 		}))
