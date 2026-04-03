@@ -1,18 +1,18 @@
 # Mogo
 
-Mogo is a self-contained, lightweight backend server written in Go. It comes with everything you need out of the box: a built-in SQLite database, a web-based admin panel, and Lua scripting for dynamic API routing and cron jobs.
+Mogo is a self-contained, lightweight backend server written in Go. It comes with everything needed for a simple backend out of the box: a built-in SQLite database, a web-based admin panel, and Lua scripting for dynamic API routing and scheduled jobs.
 
-Mogo comes from a desire to extend [PocketBase](https://github.com/pocketbase/pocketbase)'s smooth, intuitive frontend experience into the backend itself; you can write scripts in Lua, create files, and manage databases all from the admin dashboard.
+Mogo comes from a desire for writing backend logic with [PocketBase](https://github.com/pocketbase/pocketbase) to be smoother; with Mogo, you can write scripts and edit pages directly from the admin panel in Lua with a simple API, no interfacing with Go or recompiling needed.
 
-It pairs naturally with [htmx](https://htmx.org/) and the HATEOAS philosophy, though it can be used to make traditional JSON APIs too. Mogo is built for prototypes and small-scale applications: blogs with comments, leaderboards, internal tools, or any CRUD app where you want to tinker without infrastructure overhead.
+It pairs naturally with [htmx](https://htmx.org/) and the HATEOAS approach, though it can be used to make traditional JSON APIs too. Mogo is built for prototypes and small-scale applications: blogs with comments, leaderboards, internal tools, or any CRUD app where you want to tinker without any build steps or other infrastructure overhead.
 
 ---
 
 ## Features
-*   **Embedded Admin Panel**: Web UI for managing collections, records, files, scheduled jobs, and API keys
-*   **Online Code Editor**: Create and edit Lua, HTML, CSS, JS using an integrated code editor
-*   **Dynamic SQLite Database**: Flexible schemas with a simple interface
-*   **Lua Scripting Engine**: Write API routes and scheduled scripts in Lua, no recompiling needed
+*   **Admin Panel**: Web UI for managing collections, files, scheduled jobs, API keys, etc.
+*   **Code Editor**: Create and edit Lua, HTML, CSS, JS and anything else with an integrated text editor
+*   **SQLite Wrapper**: Simple dashboard & Lua API for managing collections, with flexible schema
+*   **Lua Scripting**: Write API routes and scheduled scripts in Lua, no recompiling
 *   **Basic Admin Tools**: API key permissions, rate limiting, CORS management, and automated database backups
 
 ---
@@ -42,20 +42,20 @@ It pairs naturally with [htmx](https://htmx.org/) and the HATEOAS philosophy, th
 *   `--dir=/path/to/dir`: Set a custom root directory for Mogo's folders
 *   `--new-key`: Generate and display a new API key with all permissions, then exit
 
----
-
-### Directory Structure
-Mogo automatically creates the following directories in your working directory:
+## Directory Structure
+Mogo automatically creates the following directories in your project root:
 *   `data/`: Holds your SQLite databases (`database.sqlite`, `log.sqlite`) and backups
 *   `routes/`: Lua scripts mapped to HTTP endpoints
-*   `public/`: Files placed here are served statically at the root (note: Mogo serves static files before dynamic routes)
+*   `public/`: Files placed here are served statically at the site root (note: Mogo serves static files before dynamic routes)
 *   `scripts/`: Lua scripts intended to be run as scheduled jobs
+*   `uploads/`: Default destination folder for client file uploads
+
+## Extra utilities
+Included in the `util/` folder of this repo are some assorted utility scripts
 
 ---
 
 ## Lua API Reference
-
-Mogo uses Lua to handle HTTP requests and scheduled jobs. You can manage your scripts into the directories manually or through the Admin UI.
 
 ### 1. Routing
 Scripts inside the `routes/` directory automatically map to URLs.
@@ -91,9 +91,9 @@ The `req` table contains all information about the incoming HTTP request.
     *   `req.files.myFile.save(destPath)`: Save the file to disk, returns `true` on success *(note: uploads must be in `uploads/` folder unless Unsafe Lua is enabled).*
 
 ### 3. Sending responses
-The simplest way of sending a response is by returning a value; if a string, it sends as HTML, and if a table, it sends as JSON, with all the necessary headers. For more advanced usage, you can manipulate the response object `res` directly. You can combine the two approaches, e.g. `res.status = 404` then `return "404: file not found` would send as HTML with status code 404 (`res` manipulations override any returned data). Note that the response object should not be returned, even if no text or table is returned.
+The simplest way of sending a response is by returning a value; if a string, it sends as HTML, and if a table, it sends as JSON, with all the necessary headers. For more advanced usage, you can manipulate the response object `res` directly (though note that it doesn't need to be returned). You can combine the two approaches, e.g. `res.status = 404` then `return "404: file not found` would send as HTML with status code 404 (`res` manipulations override any returned data).
 
-You can also return a function to be called after the response is sent. It should be returned last (i.e. second if returning text/table, first and only if manipulating `res` directly).
+You can also return a callback to be executed after the response is sent. It should be returned as the last argument (i.e. second if returning text/table, first and only if manipulating `res` directly).
 
 **Response object:**
 *   **`res.status`** *(number)*: HTTP status code (default `200`)
@@ -118,9 +118,9 @@ return function() log.info("Tried to access " .. req.path) end
 ```
 
 ### 4. Database API (`db`)
-Mogo has a simple CRUD API for collections. Relations are automatically resolved into nested Lua tables when fetched.
+Mogo has a simple CRUD API for collections. Relations are automatically resolved into nested Lua tables when fetched. Also, for advanced SQL manipulation, raw SQL statements can be executed by calling `db` as a function.
 
-*   **`db.<collection>:get(query, [limit], [sort_by])`**: Returns array of items matching the given table. Note that even if only one is returned, it's in an array. Also, for advanced SQL manipulation, raw SQL statements can be executed by calling `db` as a function.
+*   **`db.<collection>:get(query, [limit], [sort_by])`**: Returns array of items matching the given table. Note that even if only one is returned, it's in an array.
     *  `db.users:get{ firstName = "John", lastName = "Doe" }`
     *  `db.users:get({ active = true }, 0, "created" )` (pass a limit of 0 to get all)
     *  `local user = db.users:get({ last_name = "Doe" }, 1 )[1]`
@@ -132,7 +132,7 @@ Mogo has a simple CRUD API for collections. Relations are automatically resolved
 *   **Raw SQL**: Call the `db` object as a function for direct SQL queries. Returns a table of results for `SELECT`/`PRAGMA`, and `true, rowsAffected` for mutations. Note that system SQL tables are: `_api_keys`, `_collections`, `_cron_jobs`, `schema`
     *   `local users = db("SELECT * FROM users WHERE age > ?", 18)`
 *   **Relations**: Relational fields are automatically expanded as nested tables
-    *   `local user = db.messages({}, 1, "created)[1] -- user.id == 1`
+    *   `local user = db.messages({}, 1, "created")[1].user -- user.id == 1`
 
 ### 5. HTTP Client (`http`)
 Make outbound HTTP requests from your scripts.

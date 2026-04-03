@@ -1256,64 +1256,64 @@ async function editFile(base, path) {
     function showApiDocs() {
       document.getElementById('modal-title').innerText = "Lua API Reference";
       document.getElementById('modal-body').innerHTML = `
-         <div id="api-ref">
+<div id="api-ref">
     <div>
-    <h5>req (Request Table)</h5>
-    <ul>
-        <li><b>req.method</b>, <b>req.path</b> <i>(string)</i> - HTTP method and path</li>
-        <li><b>req.query</b>, <b>req.params</b> <i>(table)</i> - URL query string and parsed route parameters</li>
-        <li><b>req.headers</b>, <b>req.cookies</b> <i>(table)</i> - Request headers (lowercase keys) and cookies</li>
-        <li><b>req.body</b> <i>(string/table)</i> - Parsed JSON, form data, or raw string</li>
-        <li><b>req.files.<i>field</i></b> <i>(table)</i> - Uploaded files containing <b>filename</b>, <b>size</b>, and <b>save(destPath)</b> <i>(function returning boolean)</i></li>
-    </ul>
+        <h5>req (Request Table)</h5>
+        <ul>
+            <li><b>req.method</b>, <b>req.path</b> <i>(string)</i> - HTTP method and path</li>
+            <li><b>req.query</b>, <b>req.params</b> <i>(table)</i> - URL query string and parsed route parameters</li>
+            <li><b>req.headers</b>, <b>req.cookies</b> <i>(table)</i> - Request headers (lowercase keys) and cookies</li>
+            <li><b>req.body</b> <i>(string/table)</i> - Parsed JSON, form data, or raw string</li>
+            <li><b>req.files.<i>field</i></b> <i>(table)</i> - Uploaded files containing <b>filename</b>, <b>size</b>, and <b>save(destPath)</b> <i>(function returning boolean)</i></li>
+        </ul>
     </div>
     <div>
-    <h5>res (Response Table)</h5>
-    <ul>
-        <li><b>res.status</b> <i>(number)</i> - HTTP status code (default: 200)</li>
-        <li><b>res.headers</b> <i>(table)</i> - Response headers</li>
-        <li><b>res.cookies.<i>name</i></b> <i>(table/string)</i> - Set cookies. Can be a string or table: <i>{value, path, http_only, secure, max_age, same_site, delete}</i></li>
-        <li><b>res:file(path, <i>[filename]</i>)</b> - Triggers a file download response</li>
-    </ul>
+        <h5>res (Response Table)</h5>
+        <ul>
+            <li><b>res.status</b> <i>(number)</i> - HTTP status code (default: 200)</li>
+            <li><b>res.headers</b> <i>(table)</i> - Response headers</li>
+            <li><b>res.body</b> <i>(string/table)</i> - Response body (setting this overrides returned data)</li>
+            <li><b>res.cookies.<i>name</i></b> <i>(table/string)</i> - Set cookies. Can be a string (value) or table with fields: <b>value</b>, <b>http_only</b>, <b>secure</b>, <b>max_age</b>, <b>delete</b></li>
+            <li><b>res:file(path, <i>[filename]</i>)</b> - Sends a file as a download response</li>
+        </ul>
     </div>
     <div>
-    <h5>Implicit Returns</h5>
-    <p>Instead of manually setting <b>res.body</b>, you can directly return values from your handler function:</p>
-    <ul>
-        <li><i>return "content"</i> - Sets body to string, content-type to text/html</li>
-        <li><i>return {key="val"}</i> - Sets body to JSON, content-type to application/json</li>
-        <li><i>return 404, "Not Found"</i> - Sets status code and body simultaneously</li>
-    </ul>
+        <h5>Implicit Returns</h5>
+        <p>Instead of manually setting <b>res.body</b>, you can directly return values from your handler:</p>
+        <ul>
+            <li><i>return "string"</i> - Sends HTML (Content-Type: text/html)</li>
+            <li><i>return { key = "value" }</i> - Sends JSON (Content-Type: application/json)</li>
+            <li><i>return function() ... end</i> - Runs a post-response function (cleanup, logging, etc.). Can be combined with a string/table return as the second value.</li>
+        </ul>
+        <p>Any <b>res</b> fields you set (status, headers, cookies) override the returned data.</p>
     </div>
     <div>
-    <h5>db (Collections API)</h5>
-    <ul>
-        <li><b>db.<i>coll</i>:table()</b> - Returns all rows (automatically resolves relational fields into nested tables)</li>
-        <li><b>db.<i>coll</i>:find(query)</b> - Returns an array of rows matching the <i>query</i> table</li>
-        <li><b>db.<i>coll</i>:insert(data)</b> - Inserts a row and returns the new record (auto-generates <i>id</i>, <i>created</i>, <i>updated</i>)</li>
-        <li><b>db.<i>coll</i>:update(query, { $set = {...} })</b> - Updates matching records. Returns <i>boolean</i></li>
-        <li><b>db.<i>coll</i>:delete(query)</b> - Deletes matching records. Returns <i>boolean</i></li>
-        <li><b>db("SELECT * FROM tbl WHERE id = ?", id)</b> - Execute raw SQL. Returns table for SELECT/PRAGMA, or <i>boolean, rowsAffected</i> for mutations</li>
-    </ul>
+        <h5>db (Collections API)</h5>
+        <ul>
+            <li><b>db.<i>coll</i>:get(query, <i>[limit]</i>, <i>[sort_by]</i>)</b> - Returns array of matching records. Use <i>limit = 0</i> to get all. Relational fields expand automatically into nested tables.</li>
+            <li><b>db.<i>coll</i>:insert(data)</b> - Inserts a row (auto-generates <i>id</i>, <i>created</i>, <i>updated</i>) and returns the new record's id.</li>
+            <li><b>db.<i>coll</i>:update(query, updates)</b> - Updates matching records (set fields to <i>nil</i> to delete them). Returns <i>boolean</i> success.</li>
+            <li><b>db.<i>coll</i>:delete(query)</b> - Deletes matching records. Returns <i>boolean</i> success.</li>
+            <li><b>db("SELECT * FROM tbl WHERE id = ?", id)</b> - Execute raw SQL. Returns a table for SELECT/PRAGMA, or <i>boolean, rowsAffected</i> for mutations.</li>
+        </ul>
     </div>
     <div>
-    <h5>http</h5>
-    <ul>
-        <li><b>http.get(url, <i>[opts]</i>)</b> - Performs a GET request</li>
-        <li><b>http.request(method, url, <i>[opts]</i>)</b> - Performs a custom HTTP request</li>
-    </ul>
-    <p><b>opts</b> is a table accepting <i>{headers = {key="val"}, body = "data"}</i>. Both functions return a table: <i>{status, body, headers}</i>.</p>
+        <h5>http</h5>
+        <ul>
+            <li><b>http(method, url, <i>[opts]</i>)</b> - Performs an HTTP request. <b>method</b> is a string (GET, POST, etc.).</li>
+        </ul>
+        <p><b>opts</b> is a table: <i>{ headers = {key="val"}, body = "data" }</i>. Returns a table: <i>{ status, body, headers }</i>.</p>
     </div>
     <div>
-    <h5>log</h5>
-    <ul>
-        <li><b>log.info(msg)</b>, <b>log.warn(msg)</b>, <b>log.error(msg)</b> - Writes to the system log database</li>
-        <li><b>log:get(<i>[limit]</i>)</b> - Retrieves the latest logs as an array of tables <i>{id, timestamp, level, origin, script, message}</i></li>
-    </ul>
+        <h5>log</h5>
+        <ul>
+            <li><b>log.info(msg)</b>, <b>log.warn(msg)</b>, <b>log.error(msg)</b> - Writes to the system log database.</li>
+            <li><b>log:get(<i>[limit]</i>)</b> - Retrieves the latest logs as an array of tables: <i>{id, timestamp, level, origin, script, message}</i>.</li>
+        </ul>
     </div>
     <div>
-    <h5>Standard Libraries</h5>
-    <p>The standard Lua libraries <b>table</b>, <b>string</b>, <b>math</b>, and <b>coroutine</b> are fully available. The <b>os</b> library is restricted (dangerous functions are stripped) unless <i>UnsafeLua</i> is enabled in settings, which also exposes the <b>io</b> and <b>debug</b> libraries.</p>
+        <h5>Standard Libraries</h5>
+        <p>The standard Lua libraries <b>table</b>, <b>string</b>, <b>math</b>, and <b>coroutine</b> are fully available. The <b>os</b> library is restricted (dangerous functions stripped) and <b>io</b> is unavailable by default. Enabling <i>"Allow Unsafe Lua"</i> in the Admin Settings exposes the complete <b>io</b> and <b>debug</b> libraries.</p>
     </div>
 </div>
 
