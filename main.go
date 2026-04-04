@@ -1314,6 +1314,55 @@ func handleAdminFiles(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(files)
 
 	} else if r.Method == "POST" {
+		contentType := r.Header.Get("Content-Type")
+
+		// Handle Form / Drag & Drop Uploads
+		if strings.HasPrefix(contentType, "multipart/form-data") {
+			if err := r.ParseMultipartForm(32 << 20); err != nil { // 32MB Memory bounds
+				http.Error(w, err.Error(), 400)
+				return
+			}
+
+			path := r.FormValue("path")
+			if strings.Contains(path, "..") {
+				http.Error(w, "Invalid path", 403)
+				return
+			}
+			targetDir := filepath.Join(baseDir, path)
+			os.MkdirAll(targetDir, os.ModePerm)
+
+			for _, fheaders := range r.MultipartForm.File {
+				for _, hdr := range fheaders {
+					// Use filepath.Base to aggressively prevent any folder-escaping filename hacks
+					safeFileName := filepath.Base(hdr.Filename)
+					if safeFileName == "." || safeFileName == "/" || safeFileName == "\\" {
+						continue
+					}
+
+					srcFile, err := hdr.Open()
+					if err != nil {
+						continue
+					}
+
+					dstPath := filepath.Join(targetDir, safeFileName)
+					dstFile, err := os.Create(dstPath)
+					if err == nil {
+						io.Copy(dstFile, srcFile)
+						dstFile.Close()
+					}
+					srcFile.Close()
+				}
+			}
+
+			if base == "routes" {
+				initRoutes()
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"success":true}`))
+			return
+		}
+
+		// Handle standard JSON File/Folder Creation
 		var req struct {
 			Path    string `json:"path"`
 			Content string `json:"content"`

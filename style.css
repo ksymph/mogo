@@ -127,6 +127,7 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      border-bottom: 2px solid var(--bg-3);
     }
 
     .pane-content {
@@ -437,6 +438,11 @@
         .del { color: var(--danger); } 
         &:hover { background-color: var(--bg-3); }
         &.active { background-color: var(--bg); }
+        &.drag-over {
+          background-color: var(--bg-3);
+          outline: 2px dashed var(--accent, #007bff);
+          outline-offset: -2px;
+        }
       }
 
       .tree-label {
@@ -465,6 +471,16 @@
         }
       }
       .root-item .tree-actions { display: flex; }
+    }
+    
+    /* File Tree Folder Icons */
+    details > summary .folder-label::before {
+      content: "📁 ";
+    }
+
+    /* Changes to the open folder emoji when the details element is expanded */
+    details[open] > summary .folder-label::before {
+      content: "📂 ";
     }
 
     /* modal */

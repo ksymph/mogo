@@ -191,14 +191,29 @@
       }
     });
     
-    let state = {
-      tab: '', sub: '', data: [], schema:[], selected: new Set(),
-      collections: [], keys: [], crons:[], settings: null,
-      sort: { col: 'id', asc: true }
-    };
+let state = {
+    tab: '', sub: '', data: [], schema:[], selected: new Set(),
+    collections: [], keys: [], crons:[], settings: null,
+    sort: { col: 'id', asc: true },
+    openFolders: {}
+  };
 
-    // ----- Sorting Utility -----
-    function handleSort(col) {
+  // Listen for native <details> toggle events to save open/closed states
+  document.addEventListener('toggle', (e) => {
+    if (e.target.tagName === 'DETAILS') {
+      const summary = e.target.querySelector('summary.tree-item');
+      if (summary && state.tab && state.openFolders[state.tab]) {
+        const path = summary.getAttribute('data-path') || '';
+        if (e.target.open) {
+          state.openFolders[state.tab].add(path);
+        } else {
+          state.openFolders[state.tab].delete(path);
+        }
+      }
+    }
+  }, true); // Use capture phase because 'toggle' events do not bubble
+
+  function handleSort(col) {
       if (state.sort.col === col) {
         state.sort.asc = !state.sort.asc;
       } else {
@@ -258,8 +273,13 @@
     function esc(s) { return s.replace(/'/g, "\\'"); }
 
     async function api(path, opts = {}) {
-      opts.headers = { ...opts.headers, "Content-Type": "application/json" };
-      if (opts.body && typeof opts.body !== 'string') opts.body = JSON.stringify(opts.body);
+      opts.headers = opts.headers || {};
+      // Only set JSON content type if it's not a FormData upload
+      if (!(opts.body instanceof FormData)) {
+        opts.headers["Content-Type"] = "application/json";
+        if (opts.body && typeof opts.body !== 'string') opts.body = JSON.stringify(opts.body);
+      }
+      
       const res = await fetch(`/api${path}`, opts);
       if (res.status === 401) { showLogin(); throw new Error("Unauthorized"); }
       if (!res.ok) throw new Error(await res.text());
@@ -1114,6 +1134,7 @@ async function loadSettings(sub = 'admin') {
 
     // ---------- files & tree ----------
     async function loadFiles(base) {
+      if (!state.openFolders[base]) state.openFolders[base] = new Set(['']); // Root open by default
       let folderName = base;
       const res = await api(`/files?base=${base}`);
       const files = res ||[];
@@ -1140,9 +1161,10 @@ async function loadSettings(sub = 'admin') {
             </div>
           </li>`;
           } else {
-            html += `<details>
+          let isOpen = state.openFolders[base].has(path) ? 'open' : '';
+          html += `<details ${isOpen}>
             <summary class="tree-item" data-path="${esc(path)}">
-              <span class="tree-label" title="${k}">📁 ${k}</span>
+              <span class="tree-label folder-label" title="${k}">${k}</span>
               <div class="tree-actions">
                 <span onclick="event.preventDefault(); newFileModal('${base}', '${esc(path)}')" title="New in Folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m-7-7h14"/></svg></span>
                 <span class="del" onclick="event.preventDefault(); deleteFile('${base}', '${esc(path)}')" title="Delete Folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
@@ -1165,9 +1187,9 @@ async function loadSettings(sub = 'admin') {
       subHtml += `
       <div class="file-tree">
         <div>
-          <details open>
-            <summary class="tree-item root-item">
-              <span class="tree-label">📁 ${folderName}</span>
+          <details ${state.openFolders[base].has('') ? 'open' : ''}>
+            <summary class="tree-item root-item" data-path="">
+              <span class="tree-label folder-label">${folderName}</span>
               <div class="tree-actions">
                 <span onclick="event.preventDefault(); newFileModal('${base}', '')" title="New file/folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m-7-7h14"/></svg></span>
               </div>
@@ -1181,6 +1203,53 @@ async function loadSettings(sub = 'admin') {
 
       document.getElementById('sub-sidebar').innerHTML = subHtml;
       document.getElementById('pane-content').innerHTML = ``;
+
+      if (base === 'routes' || base === 'public') {
+        const title = base.charAt(0).toUpperCase() + base.slice(1);
+        document.getElementById('pane-header').innerHTML = `<h2>${title}</h2>`;
+      }
+
+      // Bind File Tree Drag & Drop interactions for File Uploads
+      setTimeout(() => {
+        const fileTree = document.querySelector('.file-tree');
+        if (fileTree && !fileTree.dataset.dndBound) {
+          fileTree.dataset.dndBound = true;
+          
+          fileTree.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            document.querySelectorAll('.tree-item.drag-over').forEach(el => el.classList.remove('drag-over'));
+            const target = e.target.closest('.tree-item');
+            if (target) target.classList.add('drag-over');
+          });
+
+          fileTree.addEventListener('dragleave', (e) => {
+            const target = e.target.closest('.tree-item');
+            if (target) target.classList.remove('drag-over');
+          });
+
+          fileTree.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            document.querySelectorAll('.tree-item.drag-over').forEach(el => el.classList.remove('drag-over'));
+            
+            if (!e.dataTransfer.files || !e.dataTransfer.files.length) return;
+            
+            let target = e.target.closest('.tree-item');
+            let path = '';
+            
+            if (target) {
+              path = target.getAttribute('data-path') || '';
+              // If dropping onto an exact file (li element), we resolve its parent folder.
+              if (target.tagName.toLowerCase() === 'li') {
+                let lastSlash = path.lastIndexOf('/');
+                path = lastSlash >= 0 ? path.substring(0, lastSlash) : '';
+              }
+            }
+            
+            await window.uploadFiles(base, path, e.dataTransfer.files);
+          });
+        }
+      }, 0);
+
       if (base === 'schedules') loadCronJobs();
     }
 
@@ -1197,7 +1266,7 @@ async function editFile(base, path) {
       }
 
       document.getElementById('pane-header').innerHTML = `
-      <h2 style="font-family: monospace; font-size:1.2rem;">${path}</h2>
+      <h2 style="font-family: monospace;">${base}/${path}</h2>
       <div>${apiBtnHtml}<button id="btn-save-file" class="btn" disabled onclick="saveFile('${base}', '${esc(path)}')" title="Ctrl+S">Save changes</button></div>
     `;
       if (path.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
@@ -1342,23 +1411,58 @@ async function editFile(base, path) {
         loadFiles(base);
       }
     }
+    
+    window.uploadFiles = async function(base, targetFolder, files) {
+      const formData = new FormData();
+      formData.append('path', targetFolder || '');
+      for (let i = 0; i < files.length; i++) {
+        formData.append('files', files[i]);
+      }
+      
+      const btn = document.getElementById('modal-confirm-btn');
+      if (btn) btn.innerText = 'Uploading...';
 
+      try {
+        await api(`/files?base=${base}`, { method: 'POST', body: formData });
+      } catch(e) {
+        alert('Upload failed: ' + e.message);
+      }
+      
+      if (btn) btn.innerText = 'Create';
+      loadFiles(base);
+    }
+
+    window.toggleNewFileInput = function() {
+      const type = document.getElementById('nf-type').value;
+      if (type === 'upload') {
+        document.getElementById('nf-name-container').style.display = 'none';
+        document.getElementById('nf-file-container').style.display = 'block';
+      } else {
+        document.getElementById('nf-name-container').style.display = 'block';
+        document.getElementById('nf-file-container').style.display = 'none';
+      }
+    }
+    
     function newFileModal(base, targetFolder) {
       let folderName = base;
       if (base === 'schedules') folderName = "scripts";
-      let title = targetFolder ? `New in /${targetFolder}` : `New in /${folderName}`;
+      let title = targetFolder ? `New in ${folderName}/${targetFolder}` : `New in ${folderName}`;
       let html = `<div class="form-field">
-        <select id="nf-type">
+        <select id="nf-type" onchange="toggleNewFileInput()">
           <option value="file">File</option>
           <option value="folder">Folder</option>
+          <option value="upload">Upload</option>
         </select>
         <label class="always-float">Type</label>
       </div>
-      <div class="form-field">
-        <input id="nf-name" placeholder="" required>
+      <div class="form-field" id="nf-name-container">
+        <input id="nf-name" placeholder="">
         <label>Name</label>
       </div>
-      <div>
+      <div class="form-field" id="nf-file-container" style="display:none;">
+        <input type="file" id="nf-file" multiple style="width: 100%;">
+      </div>
+      <div style="margin-top:1rem;">
         <button id="modal-confirm-btn" class="btn" onclick="createFile('${base}', '${esc(targetFolder)}')">Create</button> 
         <button class="btn danger" onclick="closeModal()">Cancel</button>
       </div>`;
@@ -1366,8 +1470,17 @@ async function editFile(base, path) {
     }
 
     async function createFile(base, targetFolder) {
-      let name = document.getElementById('nf-name').value;
       let type = document.getElementById('nf-type').value;
+      
+      if (type === 'upload') {
+        let fileInput = document.getElementById('nf-file');
+        if (!fileInput.files.length) return;
+        await uploadFiles(base, targetFolder, fileInput.files);
+        closeModal();
+        return;
+      }
+
+      let name = document.getElementById('nf-name').value;
       let insertSpaces = localStorage.getItem('mogo_editor_insertSpaces') === 'false';
       let tabSize = localStorage.getItem('mogo_editor_tabSize') || '3';
       if (!name) return;
