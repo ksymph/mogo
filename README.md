@@ -60,6 +60,7 @@ The `req` table contains all information about the incoming HTTP request.
 *   **`req.headers`** *(table)*: Request headers, e.g. `Content-Type == "text/html"`
 *   **`req.cookies`** *(table)*: Request cookies
 *   **`req.body`** *(string/table)*: The parsed JSON body, form data, or raw string
+*   **`req.ip`** *(string)*: Request origin IP
 *   **`req.files`** *(table)*: Uploaded multipart files
     *   `req.files.myFile.filename`: Name of sent file
     *   `req.files.myFile.size`: File size in bytes

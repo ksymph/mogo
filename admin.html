@@ -1333,6 +1333,7 @@ async function editFile(base, path) {
             <li><b>req.query</b>, <b>req.params</b> <i>(table)</i> - URL query string and parsed route parameters</li>
             <li><b>req.headers</b>, <b>req.cookies</b> <i>(table)</i> - Request headers (lowercase keys) and cookies</li>
             <li><b>req.body</b> <i>(string/table)</i> - Parsed JSON, form data, or raw string</li>
+            <li><b>req.ip</b> <i>(string)</i> - Request origin IP</li>
             <li><b>req.files.<i>field</i></b> <i>(table)</i> - Uploaded files containing <b>filename</b>, <b>size</b>, and <b>save(destPath)</b> <i>(function returning boolean)</i></li>
         </ul>
     </div>

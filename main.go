@@ -2159,7 +2159,7 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 	reqTable := L.NewTable()
 	reqTable.RawSetString("method", lua.LString(r.Method))
 	reqTable.RawSetString("path", lua.LString(r.URL.Path))
-	
+	reqTable.RawSetString("ip", lua.LString(getIP(r)))
 
 	queryTable := L.NewTable()
 	for k, v := range r.URL.Query() {
