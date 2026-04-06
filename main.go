@@ -1887,6 +1887,28 @@ func createLuaState() *lua.LState {
 		L.Call(1, 0)
 	}
 
+	pkg := L.GetGlobal("package")
+	if pkgTbl, ok := pkg.(*lua.LTable); ok {
+		pathStr := pkgTbl.RawGetString("path").String()
+		paths := strings.Split(pathStr, ";")
+		var newPaths []string
+
+		rootSlash := strings.TrimSuffix(filepath.ToSlash(rootDir), "/")
+		if rootSlash == "" {
+			newPaths = append(newPaths, "/?.lua", "/?/init.lua")
+		} else {
+			newPaths = append(newPaths, rootSlash+"/?.lua", rootSlash+"/?/init.lua")
+		}
+
+		for _, p := range paths {
+			if strings.HasPrefix(p, "./") || strings.HasPrefix(p, ".\\") {
+				continue
+			}
+			newPaths = append(newPaths, p)
+		}
+		pkgTbl.RawSetString("path", lua.LString(strings.Join(newPaths, ";")))
+	}
+
 	if !appSettings.UnsafeLua {
 		// Strip dangerous OS functions
 		osTbl := L.GetGlobal("os").(*lua.LTable)
@@ -2137,6 +2159,7 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 	reqTable := L.NewTable()
 	reqTable.RawSetString("method", lua.LString(r.Method))
 	reqTable.RawSetString("path", lua.LString(r.URL.Path))
+	
 
 	queryTable := L.NewTable()
 	for k, v := range r.URL.Query() {
