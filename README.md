@@ -1,59 +1,34 @@
 # Mogo
 
-Mogo is a self-contained, lightweight backend server written in Go. It comes with everything needed for a simple backend out of the box: a built-in SQLite database, a web-based admin panel, and Lua scripting for dynamic API routing and scheduled jobs.
+Mogo is a minimal backend-in-a-box written in Go. It comes wtih a built-in SQLite database, a web-based admin panel, and Lua scripting for dynamic API routing and scheduled jobs. It was born from a desire for writing logic and custom routing with [PocketBase](https://github.com/pocketbase/pocketbase) to be smoother; with Mogo, you can write and manage an entire application from an admin panel with a simple Lua API, no recompiling, SSH-ing or interfacing with Go needed.
 
-Mogo comes from a desire for writing backend logic with [PocketBase](https://github.com/pocketbase/pocketbase) to be smoother; with Mogo, you can write scripts and edit pages directly from the admin panel in Lua with a simple API, no interfacing with Go or recompiling needed.
-
-It pairs naturally with [htmx](https://htmx.org/) and the HATEOAS approach, though it can be used to make traditional JSON APIs too. Mogo is built for prototypes and small-scale applications: blogs with comments, leaderboards, internal tools, or any CRUD app where you want to tinker without any build steps or other infrastructure overhead.
-
----
-
-## Features
-*   **Admin Panel**: Web UI for managing collections, files, scheduled jobs, API keys, etc.
-*   **Code Editor**: Create and edit Lua, HTML, CSS, JS and anything else with an integrated text editor
-*   **SQLite Wrapper**: Simple dashboard & Lua API for managing collections, with flexible schema
-*   **Lua Scripting**: Write API routes and scheduled scripts in Lua, no recompiling
-*   **Basic Admin Tools**: API key permissions, rate limiting, CORS management, and automated database backups
-
----
+It pairs naturally with [htmx](https://htmx.org/) and the HATEOAS approach, though it can be used to make traditional JSON APIs too. Mogo is best suited for prototypes and small-scale applications: blogs with comments, leaderboards, internal tools, or any CRUD app where you want to tinker without any build steps or other infrastructure overhead.
 
 ## Quick Start
+```bash
+go run main.go
+```
+or build it:
+```bash
+go build -o mogo .
+```
+On first run, Mogo will generate a master API key with all permissions and print it to console. Go to http://localhost:8080/admin and copy-paste the key in, or use the generated auto login link.
 
-1. **Run the server:**
-   ```bash
-   go run main.go
-   # Or build it: go build -o mogo main.go && ./mogo
-   ```
-2. **Access the Admin Panel:**
-   On first run, Mogo will generate a Master API Key:
-   ```text
-   =================================================================
-    INITIAL API KEY: sk_1234567890abcdef...
-    Auto-login link: http://localhost:8080/admin/?key=sk_1234567890abcdef...
-   =================================================================
-   ```
-   Navigate to http://localhost:8080/admin and copy-paste your API key in, or use the auto login link.
+Note: included in the `util/` folder of this repo are some assorted utility scripts.
 
----
-
-## Command Line Flags
+### CLI Flags
 
 *   `--port=8080`: Set the HTTP port (overrides port set in settings; default 8080)
 *   `--dir=/path/to/dir`: Set a custom root directory for Mogo's folders
 *   `--new-key`: Generate and display a new API key with all permissions, then exit
 
-## Directory Structure
+### Directory Structure
 Mogo automatically creates the following directories in your project root:
 *   `data/`: Holds your SQLite databases (`database.sqlite`, `log.sqlite`) and backups
 *   `routes/`: Lua scripts mapped to HTTP endpoints
 *   `public/`: Files placed here are served statically at the site root (note: Mogo serves static files before dynamic routes)
 *   `scripts/`: Lua scripts intended to be run as scheduled jobs
 *   `uploads/`: Default destination folder for client file uploads
-
-## Extra utilities
-Included in the `util/` folder of this repo are some assorted utility scripts
-
----
 
 ## Lua API Reference
 
