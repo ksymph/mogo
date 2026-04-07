@@ -1360,10 +1360,10 @@ async function editFile(base, path) {
     <div>
         <h5>db (Collections API)</h5>
         <ul>
-            <li><b>db.<i>coll</i>:get(query, <i>[limit]</i>, <i>[sort_by]</i>)</b> - Returns array of matching records. Use <i>limit = 0</i> to get all. Relational fields expand automatically into nested tables.</li>
-            <li><b>db.<i>coll</i>:insert(data)</b> - Inserts a row (auto-generates <i>id</i>, <i>created</i>, <i>updated</i>) and returns the new record's id.</li>
-            <li><b>db.<i>coll</i>:update(query, updates)</b> - Updates matching records (set fields to <i>nil</i> to delete them). Returns <i>boolean</i> success.</li>
-            <li><b>db.<i>coll</i>:delete(query)</b> - Deletes matching records. Returns <i>boolean</i> success.</li>
+            <li><b>db.&#60;col&#62;:get(<i>[query]</i>, <i>[limit]</i>, <i>[sort_by]</i>)</b> - Returns array of matching records, ascending by ID by default. Use <i>limit = 0</i> for no limit. Negative limit to reverse order. Relational fields expand automatically into nested tables.</li>
+            <li><b>db.&#60;col&#62;:insert(data)</b> - Inserts a row (auto-generates <i>id</i>, <i>created</i>, <i>updated</i>) and returns the new record's id.</li>
+            <li><b>db.&#60;col&#62;:update(query, updates)</b> - Updates matching records (set fields to <i>nil</i> to delete them). Returns <i>boolean</i> success.</li>
+            <li><b>db.&#60;col&#62;:delete(query)</b> - Deletes matching records. Returns <i>boolean</i> success.</li>
             <li><b>db("SELECT * FROM tbl WHERE id = ?", id)</b> - Execute raw SQL. Returns a table for SELECT/PRAGMA, or <i>boolean, rowsAffected</i> for mutations.</li>
         </ul>
     </div>

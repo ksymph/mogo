@@ -96,9 +96,9 @@ return function() log.info("Tried to access " .. req.path) end
 ### 4. Database API (`db`)
 Mogo has a simple CRUD API for collections. Relations are automatically resolved into nested Lua tables when fetched. Also, for advanced SQL manipulation, raw SQL statements can be executed by calling `db` as a function.
 
-*   **`db.<collection>:get(query, [limit], [sort_by])`**: Returns array of items matching the given table. Note that even if only one is returned, it's in an array.
+*   **`db.<collection>:get([query], [limit], [sort_by])`**: Returns array of items matching the given query table, or all if no/empty table is provided. To reverse sort order, use a negative limit; pass in 0 to get all results; negative zero does work. Note that even if only one is returned, it's in an array. Sorts by ID and ascending by default.
     *  `db.users:get{ firstName = "John", lastName = "Doe" }`
-    *  `db.users:get({ active = true }, 0, "created" )` (pass a limit of 0 to get all)
+    *  `db.users:get({ active = true }, 0, "created" )`
     *  `local user = db.users:get({ last_name = "Doe" }, 1 )[1]`
 *   **`db.<collection>:insert(data)`**: Inserts a row and returns the new record; `id`, `created`, and `updated` are auto-generated; returns new item id
     *   `uid = db.users:insert({ firstName = "Alice", age = 30 })`

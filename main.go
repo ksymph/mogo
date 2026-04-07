@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -1432,8 +1433,11 @@ func injectDB(L *lua.LState) {
 
 			// limit
 			limit := 0
+			reverseSort := false
 			if L.GetTop() >= 3 && L.Get(3).Type() == lua.LTNumber {
-				limit = L.CheckInt(3)
+				limitFloat := float64(L.CheckNumber(3))
+				reverseSort = math.Signbit(limitFloat)
+				limit = int(math.Abs(limitFloat))
 			}
 
 			// sortBy
@@ -1445,11 +1449,25 @@ func injectDB(L *lua.LState) {
 			orderClause := "ORDER BY id ASC"
 			if sortBy != "" {
 				sortCol := sortBy
-				// Default to descending sort if not explicitly specified to fulfill "most recently created" usecase
+				// Default to ascending sort if not explicitly specified
 				if !strings.Contains(strings.ToUpper(sortCol), " ASC") && !strings.Contains(strings.ToUpper(sortCol), " DESC") {
-					sortCol += " DESC"
+					sortCol += " ASC"
 				}
 				orderClause = "ORDER BY " + sortCol
+			}
+
+			if reverseSort {
+				parts := strings.Split(orderClause[9:], ",") // remove "ORDER BY "
+				for i, part := range parts {
+					part = strings.TrimSpace(part)
+					upperPart := strings.ToUpper(part)
+					if strings.HasSuffix(upperPart, " ASC") {
+						parts[i] = part[:len(part)-4] + " DESC"
+					} else if strings.HasSuffix(upperPart, " DESC") {
+						parts[i] = part[:len(part)-5] + " ASC"
+					}
+				}
+				orderClause = "ORDER BY " + strings.Join(parts, ", ")
 			}
 
 			limitClause := ""
