@@ -32,12 +32,46 @@ var embedFS embed.FS
 
 var (
 	rootDir     string
-	dataPath    string
-	publicPath  string
-	routesPath  string
-	scriptsPath string
-	uploadsPath string
+	appSettings Settings
+	ProdEnv     *Environment
+	StagingEnv  *Environment
 )
+
+type Environment struct {
+	IsStaging   bool
+	BaseDir     string
+	DataPath    string
+	PublicPath  string
+	RoutesPath  string
+	ScriptsPath string
+	UploadsPath string
+
+	DBConn      *sql.DB
+	LogDBConn   *sql.DB
+	SchemaCache sync.Map
+	Scheduler   gocron.Scheduler
+	LuaPool     *sync.Pool
+	Routes      []Route
+	RoutesMu    sync.RWMutex
+}
+
+func NewEnvironment(baseDir string, isStaging bool) *Environment {
+	env := &Environment{
+		IsStaging:   isStaging,
+		BaseDir:     baseDir,
+		DataPath:    filepath.Join(baseDir, "data"),
+		PublicPath:  filepath.Join(baseDir, "public"),
+		RoutesPath:  filepath.Join(baseDir, "routes"),
+		ScriptsPath: filepath.Join(baseDir, "scripts"),
+		UploadsPath: filepath.Join(baseDir, "uploads"),
+	}
+	os.MkdirAll(env.DataPath, os.ModePerm)
+	os.MkdirAll(env.ScriptsPath, os.ModePerm)
+	os.MkdirAll(env.RoutesPath, os.ModePerm)
+	os.MkdirAll(env.PublicPath, os.ModePerm)
+	os.MkdirAll(env.UploadsPath, os.ModePerm)
+	return env
+}
 
 // -----------------------------------------------------------------------------
 // 0. SETTINGS & CONFIG
@@ -56,46 +90,41 @@ type Settings struct {
 	LogRetentionDays int  `json:"log_retention_days"`
 	UnsafeLua        bool `json:"unsafe_lua"`
 	Port             int  `json:"port"`
+
+	StagingEnabled bool `json:"staging_enabled"`
+	StagingPort    int  `json:"staging_port"`
 }
 
-var appSettings Settings
-
 func loadSettings() {
-	os.MkdirAll(dataPath, os.ModePerm)
-	os.MkdirAll(scriptsPath, os.ModePerm)
-	os.MkdirAll(routesPath, os.ModePerm)
-	os.MkdirAll(publicPath, os.ModePerm)
-	os.MkdirAll(uploadsPath, os.ModePerm)
-
 	appSettings.RateLimitRPS = 100
 	appSettings.RateLimitBurst = 200
 	appSettings.AdminMaxRetries = 5
 	appSettings.LogRetentionDays = 30
 	appSettings.Port = 8080
+	appSettings.StagingPort = 8090
+	appSettings.StagingEnabled = false
 
-	b, err := os.ReadFile(filepath.Join(dataPath, "settings.json"))
+	b, err := os.ReadFile(filepath.Join(ProdEnv.DataPath, "settings.json"))
 	if err == nil {
 		json.Unmarshal(b, &appSettings)
 	}
 
-	initLuaPool()
+	ProdEnv.initLuaPool()
 }
 
 func saveSettings(s Settings) {
 	b, _ := json.MarshalIndent(s, "", "  ")
-	os.WriteFile(filepath.Join(dataPath, "settings.json"), b, 0644)
+	os.WriteFile(filepath.Join(ProdEnv.DataPath, "settings.json"), b, 0644)
 	appSettings = s
-	initLuaPool() // Re-initialize pool to apply UnsafeLua changes
+	ProdEnv.initLuaPool()
+	if StagingEnv != nil {
+		StagingEnv.initLuaPool()
+	}
 }
 
 // -----------------------------------------------------------------------------
 // 1. DATABASE, CACHE & LIMITERS
 // -----------------------------------------------------------------------------
-var dbConn *sql.DB
-var logDBConn *sql.DB
-var schemaCache sync.Map
-var scheduler gocron.Scheduler
-
 type TokenBucket struct {
 	tokens float64
 	last   time.Time
@@ -163,22 +192,24 @@ func recordAdminAttempt(ip string, success bool) {
 	}
 }
 
-func initDB() {
+func (env *Environment) initDB() {
 	var err error
-	dbPath := filepath.Join(dataPath, "database.sqlite")
-	dbConn, err = sql.Open("sqlite", dbPath)
+	dbPath := filepath.Join(env.DataPath, "database.sqlite")
+	env.DBConn, err = sql.Open("sqlite", dbPath)
 	if err != nil {
 		log.Fatalf("Failed to open SQLite database: %v", err)
 	}
-	initSystemTables()
-	initMasterKey()
+	env.initSystemTables()
+	if !env.IsStaging {
+		env.initMasterKey()
+	}
 
-	logDBPath := filepath.Join(dataPath, "log.sqlite")
-	logDBConn, err = sql.Open("sqlite", logDBPath+"?_journal_mode=WAL")
+	logDBPath := filepath.Join(env.DataPath, "log.sqlite")
+	env.LogDBConn, err = sql.Open("sqlite", logDBPath+"?_journal_mode=WAL")
 	if err != nil {
 		log.Fatalf("Failed to open Log database: %v", err)
 	}
-	_, err = logDBConn.Exec(`CREATE TABLE IF NOT EXISTS _logs (
+	_, err = env.LogDBConn.Exec(`CREATE TABLE IF NOT EXISTS _logs (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
 		level TEXT,
@@ -191,17 +222,17 @@ func initDB() {
 	}
 }
 
-func appLog(level, scriptPath, origin, message string) {
-	if logDBConn == nil {
+func (env *Environment) appLog(level, scriptPath, origin, message string) {
+	if env.LogDBConn == nil {
 		return
 	}
-	_, err := logDBConn.Exec(`INSERT INTO _logs (level, script_path, origin, message) VALUES (?, ?, ?, ?)`, level, scriptPath, origin, message)
+	_, err := env.LogDBConn.Exec(`INSERT INTO _logs (level, script_path, origin, message) VALUES (?, ?, ?, ?)`, level, scriptPath, origin, message)
 	if err != nil {
 		log.Printf("Failed to write to app log: %v", err)
 	}
 }
 
-func initSystemTables() {
+func (env *Environment) initSystemTables() {
 	queries := []string{
 		`CREATE TABLE IF NOT EXISTS _collections (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -237,30 +268,30 @@ func initSystemTables() {
 		);`,
 	}
 	for _, q := range queries {
-		if _, err := dbConn.Exec(q); err != nil {
+		if _, err := env.DBConn.Exec(q); err != nil {
 			log.Fatalf("System Table Init Error: %v", err)
 		}
 	}
 
-	dbConn.Exec("ALTER TABLE _cron_jobs ADD COLUMN schedule_meta TEXT")
-	dbConn.Exec("ALTER TABLE _schema ADD COLUMN position INTEGER DEFAULT 0")
+	env.DBConn.Exec("ALTER TABLE _cron_jobs ADD COLUMN schedule_meta TEXT")
+	env.DBConn.Exec("ALTER TABLE _schema ADD COLUMN position INTEGER DEFAULT 0")
 }
 
-func initMasterKey() {
+func (env *Environment) initMasterKey() {
 	var count int
-	dbConn.QueryRow("SELECT COUNT(*) FROM _api_keys").Scan(&count)
+	env.DBConn.QueryRow("SELECT COUNT(*) FROM _api_keys").Scan(&count)
 	if count == 0 {
 		b := make([]byte, 16)
 		crand.Read(b)
 		newKey := "sk_" + hex.EncodeToString(b)
 
-		allPerms := `{"collections":{"*":["item","schema"]},"routes":true,"schedules":true,"public":true,"settings":true,"keys":true,"logs":true}`
-		dbConn.Exec("INSERT INTO _api_keys (key, name, permissions, created) VALUES (?, ?, ?, ?)",
+		allPerms := `{"production":true,"staging":true,"collections":{"*":["item","schema"]},"routes":true,"schedules":true,"public":true,"settings":true,"keys":true,"logs":true}`
+		env.DBConn.Exec("INSERT INTO _api_keys (key, name, permissions, created) VALUES (?, ?, ?, ?)",
 			newKey, "admin", allPerms, time.Now().Format("2006-01-02 15:04:05"))
 
 		fmt.Println("\n=================================================================")
 		fmt.Printf(" INITIAL API KEY: %s\n", newKey)
-		fmt.Printf(" Auto-login link: http://localhost:8080/admin/?key=%s\n", newKey)
+		fmt.Printf(" Auto-login link: http://localhost:%d/admin/?key=%s\n", appSettings.Port, newKey)
 		fmt.Println("=================================================================")
 	}
 }
@@ -270,8 +301,8 @@ func generateNewMasterKey() {
 	crand.Read(b)
 	newKey := "sk_" + hex.EncodeToString(b)
 
-	allPerms := `{"collections":{"*":["item","schema"]},"routes":true,"schedules":true,"public":true,"settings":true,"keys":true,"logs":true}`
-	dbConn.Exec("INSERT INTO _api_keys (key, name, permissions, created) VALUES (?, ?, ?, ?)",
+	allPerms := `{"production":true,"staging":true,"collections":{"*":["item","schema"]},"routes":true,"schedules":true,"public":true,"settings":true,"keys":true,"logs":true}`
+	ProdEnv.DBConn.Exec("INSERT INTO _api_keys (key, name, permissions, created) VALUES (?, ?, ?, ?)",
 		newKey, "cli-generated", allPerms, time.Now().Format("2006-01-02 15:04:05"))
 
 	fmt.Println("\n=================================================================")
@@ -282,16 +313,16 @@ func generateNewMasterKey() {
 // -----------------------------------------------------------------------------
 // 1.5. CRON JOBS
 // -----------------------------------------------------------------------------
-func initCron() {
-	if scheduler != nil {
-		scheduler.Shutdown()
+func (env *Environment) initCron() {
+	if env.Scheduler != nil {
+		env.Scheduler.Shutdown()
 	}
 
 	s, err := gocron.NewScheduler()
 	if err != nil {
 		log.Fatalf("Failed to create scheduler: %v", err)
 	}
-	scheduler = s
+	env.Scheduler = s
 
 	s.NewJob(
 		gocron.DailyJob(1, gocron.NewAtTimes(gocron.NewAtTime(0, 0, 0))),
@@ -300,16 +331,16 @@ func initCron() {
 			if retention <= 0 {
 				retention = 30
 			}
-			if logDBConn != nil {
-				_, err := logDBConn.Exec(fmt.Sprintf("DELETE FROM _logs WHERE timestamp < datetime('now', '-%d days')", retention))
+			if env.LogDBConn != nil {
+				_, err := env.LogDBConn.Exec(fmt.Sprintf("DELETE FROM _logs WHERE timestamp < datetime('now', '-%d days')", retention))
 				if err != nil {
-					appLog("error", "system", "cron", "Failed to prune logs: "+err.Error())
+					env.appLog("error", "system", "cron", "Failed to prune logs: "+err.Error())
 				}
 			}
 		}),
 	)
 
-	rows, err := dbConn.Query("SELECT id, schedule, schedule_meta, script_path FROM _cron_jobs WHERE active = 1")
+	rows, err := env.DBConn.Query("SELECT id, schedule, schedule_meta, script_path FROM _cron_jobs WHERE active = 1")
 	if err == nil {
 		defer rows.Close()
 		parseIntField := func(v any) int {
@@ -330,7 +361,7 @@ func initCron() {
 			var scheduleMeta sql.NullString
 			rows.Scan(&id, &schedule, &scheduleMeta, &scriptPath)
 
-			fullPath := filepath.Join(scriptsPath, scriptPath)
+			fullPath := filepath.Join(env.ScriptsPath, scriptPath)
 
 			mode := "raw"
 			var meta map[string]any
@@ -356,9 +387,9 @@ func initCron() {
 				jobDef = gocron.CronJob(schedule, true)
 			}
 
-			_, err := scheduler.NewJob(
+			_, err := env.Scheduler.NewJob(
 				jobDef,
-				gocron.NewTask(runCronScript, fullPath),
+				gocron.NewTask(func() { env.runCronScript(fullPath) }),
 			)
 			if err != nil {
 				log.Printf("Failed to load cron job %d: %v", id, err)
@@ -366,7 +397,7 @@ func initCron() {
 		}
 	}
 
-	if appSettings.BackupSched != "" && appSettings.BackupSched != "Disabled" {
+	if !env.IsStaging && appSettings.BackupSched != "" && appSettings.BackupSched != "Disabled" {
 		mode := "raw"
 		var meta map[string]any
 		if appSettings.BackupSchedMeta != "" {
@@ -402,7 +433,7 @@ func initCron() {
 			jobDef = gocron.CronJob(appSettings.BackupSched, true)
 		}
 
-		_, err := scheduler.NewJob(
+		_, err := env.Scheduler.NewJob(
 			jobDef,
 			gocron.NewTask(func() {
 				createBackup(appSettings.BackupDestDir, appSettings.BackupFull)
@@ -413,12 +444,12 @@ func initCron() {
 		}
 	}
 
-	scheduler.Start()
+	env.Scheduler.Start()
 }
 
-func runCronScript(scriptPath string) {
-	L := luaPool.Get().(*lua.LState)
-	defer luaPool.Put(L)
+func (env *Environment) runCronScript(scriptPath string) {
+	L := env.LuaPool.Get().(*lua.LState)
+	defer env.LuaPool.Put(L)
 	top := L.GetTop()
 	defer L.SetTop(top)
 
@@ -433,11 +464,11 @@ func runCronScript(scriptPath string) {
 		return
 	}
 
-	env := L.NewTable()
+	luaEnv := L.NewTable()
 	mt := L.NewTable()
 	L.SetField(mt, "__index", L.Get(lua.GlobalsIndex))
-	L.SetMetatable(env, mt)
-	fn.Env = env
+	L.SetMetatable(luaEnv, mt)
+	fn.Env = luaEnv
 
 	L.Push(fn)
 	if err := L.PCall(0, 0, nil); err != nil {
@@ -447,13 +478,13 @@ func runCronScript(scriptPath string) {
 
 func createBackup(destDir string, full bool) error {
 	if destDir == "" {
-		destDir = filepath.Join(dataPath, "backups")
+		destDir = filepath.Join(ProdEnv.DataPath, "backups")
 	}
 	os.MkdirAll(destDir, os.ModePerm)
 	timestamp := time.Now().Format("2006-01-02_15-04-05")
 
 	if !full {
-		src := filepath.Join(dataPath, "database.sqlite")
+		src := filepath.Join(ProdEnv.DataPath, "database.sqlite")
 		dst := filepath.Join(destDir, timestamp+".sqlite")
 		in, err := os.Open(src)
 		if err != nil {
@@ -479,7 +510,7 @@ func createBackup(destDir string, full bool) error {
 	defer w.Close()
 	destDirAbs, _ := filepath.Abs(destDir)
 
-	err = filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -503,7 +534,9 @@ func createBackup(destDir string, full bool) error {
 		if err != nil {
 			return err
 		}
-		fh.Name = filepath.ToSlash(path)
+		
+		relPath, _ := filepath.Rel(rootDir, path)
+		fh.Name = filepath.ToSlash(relPath)
 		fh.Method = zip.Deflate
 
 		f, err := w.CreateHeader(fh)
@@ -523,19 +556,50 @@ func createBackup(destDir string, full bool) error {
 	return err
 }
 
+func copyDir(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if info.IsDir() {
+			return os.MkdirAll(target, info.Mode())
+		}
+
+		in, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer in.Close()
+
+		out, err := os.Create(target)
+		if err != nil {
+			return err
+		}
+		defer out.Close()
+
+		_, err = io.Copy(out, in)
+		return err
+	})
+}
+
 type SchemaField struct {
 	Name     string `json:"name"`
 	Type     string `json:"type"`
 	Required bool   `json:"required"`
 }
 
-func getCollectionSchema(collection string) []SchemaField {
-	if cached, ok := schemaCache.Load(collection); ok {
+func (env *Environment) getCollectionSchema(collection string) []SchemaField {
+	if cached, ok := env.SchemaCache.Load(collection); ok {
 		return cached.([]SchemaField)
 	}
 	var schema []SchemaField = []SchemaField{}
 	q := "SELECT s.field, s.type, s.required FROM _schema s JOIN _collections c ON s.collection_id = c.id WHERE c.name = ? ORDER BY s.position ASC, s.id ASC"
-	rows, err := dbConn.Query(q, collection)
+	rows, err := env.DBConn.Query(q, collection)
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -545,18 +609,18 @@ func getCollectionSchema(collection string) []SchemaField {
 			schema = append(schema, SchemaField{Name: field, Type: typ, Required: required})
 		}
 	}
-	schemaCache.Store(collection, schema)
+	env.SchemaCache.Store(collection, schema)
 	return schema
 }
 
-func createCollectionInDB(name string, schema []SchemaField) error {
+func (env *Environment) createCollectionInDB(name string, schema []SchemaField) error {
 	var exists int
-	dbConn.QueryRow("SELECT COUNT(*) FROM _collections WHERE name = ?", name).Scan(&exists)
+	env.DBConn.QueryRow("SELECT COUNT(*) FROM _collections WHERE name = ?", name).Scan(&exists)
 	if exists > 0 {
 		return fmt.Errorf("collection already exists")
 	}
 
-	res, err := dbConn.Exec("INSERT INTO _collections (name, created, updated) VALUES (?, ?, ?)",
+	res, err := env.DBConn.Exec("INSERT INTO _collections (name, created, updated) VALUES (?, ?, ?)",
 		name, time.Now().Format("2006-01-02 15:04:05"), time.Now().Format("2006-01-02 15:04:05"))
 	if err != nil {
 		return err
@@ -572,25 +636,25 @@ func createCollectionInDB(name string, schema []SchemaField) error {
 		case "bool":
 			sqlType = "BOOLEAN"
 		}
-		dbConn.Exec("INSERT INTO _schema (collection_id, field, type, required, position) VALUES (?, ?, ?, ?, ?)",
+		env.DBConn.Exec("INSERT INTO _schema (collection_id, field, type, required, position) VALUES (?, ?, ?, ?, ?)",
 			collectionID, field.Name, field.Type, field.Required, i)
 		sqlFields = append(sqlFields, fmt.Sprintf("%s %s", field.Name, sqlType))
 	}
 	createSQL := fmt.Sprintf("CREATE TABLE %s (%s)", name, strings.Join(sqlFields, ", "))
-	_, err = dbConn.Exec(createSQL)
-	schemaCache.Delete(name)
+	_, err = env.DBConn.Exec(createSQL)
+	env.SchemaCache.Delete(name)
 	return err
 }
 
-func updateCollectionInDB(name string, schema []SchemaField) error {
+func (env *Environment) updateCollectionInDB(name string, schema []SchemaField) error {
 	var collectionID int
-	err := dbConn.QueryRow("SELECT id FROM _collections WHERE name = ?", name).Scan(&collectionID)
+	err := env.DBConn.QueryRow("SELECT id FROM _collections WHERE name = ?", name).Scan(&collectionID)
 	if err != nil {
 		return fmt.Errorf("collection not found")
 	}
 
 	existingSchema := make(map[string]string)
-	rows, err := dbConn.Query("SELECT field, type FROM _schema WHERE collection_id = ?", collectionID)
+	rows, err := env.DBConn.Query("SELECT field, type FROM _schema WHERE collection_id = ?", collectionID)
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -611,23 +675,23 @@ func updateCollectionInDB(name string, schema []SchemaField) error {
 			case "bool":
 				sqlType = "BOOLEAN"
 			}
-			dbConn.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", name, field.Name, sqlType))
-			dbConn.Exec("INSERT INTO _schema (collection_id, field, type, required, position) VALUES (?, ?, ?, ?, ?)",
+			env.DBConn.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", name, field.Name, sqlType))
+			env.DBConn.Exec("INSERT INTO _schema (collection_id, field, type, required, position) VALUES (?, ?, ?, ?, ?)",
 				collectionID, field.Name, field.Type, field.Required, i)
 		} else {
-			dbConn.Exec("UPDATE _schema SET type = ?, required = ?, position = ? WHERE collection_id = ? AND field = ?", field.Type, field.Required, i, collectionID, field.Name)
+			env.DBConn.Exec("UPDATE _schema SET type = ?, required = ?, position = ? WHERE collection_id = ? AND field = ?", field.Type, field.Required, i, collectionID, field.Name)
 		}
 	}
 
 	for existingField := range existingSchema {
 		if !newFields[existingField] {
-			dbConn.Exec(fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", name, existingField))
-			dbConn.Exec("DELETE FROM _schema WHERE collection_id = ? AND field = ?", collectionID, existingField)
+			env.DBConn.Exec(fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", name, existingField))
+			env.DBConn.Exec("DELETE FROM _schema WHERE collection_id = ? AND field = ?", collectionID, existingField)
 		}
 	}
 
-	dbConn.Exec("UPDATE _collections SET updated = ? WHERE id = ?", time.Now().Format("2006-01-02 15:04:05"), collectionID)
-	schemaCache.Delete(name)
+	env.DBConn.Exec("UPDATE _collections SET updated = ? WHERE id = ?", time.Now().Format("2006-01-02 15:04:05"), collectionID)
+	env.SchemaCache.Delete(name)
 	return nil
 }
 
@@ -689,7 +753,7 @@ func adminLockoutMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func corsAndRateLimitMiddleware(next http.HandlerFunc) http.HandlerFunc {
+func (env *Environment) corsAndRateLimitMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		origins := appSettings.AllowedOrigins
 		if origins == "" {
@@ -711,7 +775,7 @@ func corsAndRateLimitMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func adminMiddleware(next http.HandlerFunc) http.HandlerFunc {
+func (env *Environment) adminMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return adminLockoutMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		var key string
 		if cookie, err := r.Cookie("mogo_token"); err == nil {
@@ -727,14 +791,29 @@ func adminMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 		ip := getIP(r)
 		var permissions string
-		err := dbConn.QueryRow("SELECT permissions FROM _api_keys WHERE key = ?", key).Scan(&permissions)
+		err := ProdEnv.DBConn.QueryRow("SELECT permissions FROM _api_keys WHERE key = ?", key).Scan(&permissions)
 		if err == nil {
+			var p map[string]any
+			json.Unmarshal([]byte(permissions), &p)
+
+			if env.IsStaging {
+				if val, ok := p["staging"].(bool); !ok || !val {
+					http.Error(w, "Forbidden: Staging access denied", 403)
+					return
+				}
+			} else {
+				if val, ok := p["production"].(bool); !ok || !val {
+					http.Error(w, "Forbidden: Production access denied", 403)
+					return
+				}
+			}
+
 			recordAdminAttempt(ip, true)
 			r.Header.Set("X-Admin-Perms", permissions)
 			next(w, r)
 			return
 		}
-		
+
 		recordAdminAttempt(ip, false)
 		http.Error(w, "Invalid API Key", 401)
 	})
@@ -792,7 +871,7 @@ func hasCollectionPermission(r *http.Request, collection string, action string) 
 	return check("*") || check(collection)
 }
 
-func handleAdminLogin(w http.ResponseWriter, r *http.Request) {
+func (env *Environment) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Method Not Allowed", 405)
 		return
@@ -804,24 +883,48 @@ func handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 
 	ip := getIP(r)
 	var permissions string
-	err := dbConn.QueryRow("SELECT permissions FROM _api_keys WHERE key = ?", creds.APIKey).Scan(&permissions)
+	err := ProdEnv.DBConn.QueryRow("SELECT permissions FROM _api_keys WHERE key = ?", creds.APIKey).Scan(&permissions)
 	if err == nil {
+		var p map[string]any
+		json.Unmarshal([]byte(permissions), &p)
+
+		if env.IsStaging {
+			if val, ok := p["staging"].(bool); !ok || !val {
+				recordAdminAttempt(ip, false)
+				http.Error(w, "Forbidden: Staging access denied", 403)
+				return
+			}
+		} else {
+			if val, ok := p["production"].(bool); !ok || !val {
+				recordAdminAttempt(ip, false)
+				http.Error(w, "Forbidden: Production access denied", 403)
+				return
+			}
+		}
+
 		recordAdminAttempt(ip, true)
 		setAuthCookie(w, creds.APIKey)
 		w.Write([]byte(`{"success":true}`))
 		return
 	}
-	
+
 	recordAdminAttempt(ip, false)
 	http.Error(w, "Invalid API Key", 401)
 }
 
-func handleAuthCheck(w http.ResponseWriter, r *http.Request) {
+func (env *Environment) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"permissions": r.Header.Get("X-Admin-Perms")})
+	envStr := "production"
+	if env.IsStaging {
+		envStr = "staging"
+	}
+	json.NewEncoder(w).Encode(map[string]string{
+		"permissions": r.Header.Get("X-Admin-Perms"),
+		"environment": envStr,
+	})
 }
 
-func handleAdminSettings(w http.ResponseWriter, r *http.Request) {
+func (env *Environment) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
 	if !hasPermission(r, "settings") {
 		http.Error(w, "Forbidden", 403)
 		return
@@ -832,13 +935,24 @@ func handleAdminSettings(w http.ResponseWriter, r *http.Request) {
 	} else if r.Method == "POST" {
 		var s Settings
 		json.NewDecoder(r.Body).Decode(&s)
+
+		wasStagingEnabled := appSettings.StagingEnabled
 		saveSettings(s)
-		initCron()
+
+		ProdEnv.initCron()
+		if StagingEnv != nil {
+			StagingEnv.initCron()
+		}
+
+		if !wasStagingEnabled && s.StagingEnabled {
+			startStagingServer()
+		}
+
 		w.Write([]byte(`{"success":true}`))
 	}
 }
 
-func handleAdminBackup(w http.ResponseWriter, r *http.Request) {
+func (env *Environment) handleAdminBackup(w http.ResponseWriter, r *http.Request) {
 	if !hasPermission(r, "settings") {
 		http.Error(w, "Forbidden", 403)
 		return
@@ -854,7 +968,128 @@ func handleAdminBackup(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleAdminLogs(w http.ResponseWriter, r *http.Request) {
+func (env *Environment) handleStagingSync(w http.ResponseWriter, r *http.Request) {
+	if !hasPermission(r, "settings") {
+		http.Error(w, "Forbidden", 403)
+		return
+	}
+	if StagingEnv == nil {
+		http.Error(w, "Staging environment is not enabled", 400)
+		return
+	}
+	var req struct {
+		Direction   string `json:"direction"`
+		Collections bool   `json:"collections"`
+		Routes      bool   `json:"routes"`
+		Public      bool   `json:"public"`
+		Schedules   bool   `json:"schedules"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+
+	var sourceEnv, targetEnv *Environment
+	if req.Direction == "prod_to_staging" {
+		sourceEnv = ProdEnv
+		targetEnv = StagingEnv
+	} else if req.Direction == "staging_to_prod" {
+		sourceEnv = StagingEnv
+		targetEnv = ProdEnv
+	} else {
+		http.Error(w, "Invalid direction", 400)
+		return
+	}
+
+	if req.Public {
+		os.RemoveAll(targetEnv.PublicPath)
+		copyDir(sourceEnv.PublicPath, targetEnv.PublicPath)
+	}
+	if req.Routes {
+		os.RemoveAll(targetEnv.RoutesPath)
+		copyDir(sourceEnv.RoutesPath, targetEnv.RoutesPath)
+		targetEnv.initRoutes()
+	}
+	if req.Schedules {
+		os.RemoveAll(targetEnv.ScriptsPath)
+		copyDir(sourceEnv.ScriptsPath, targetEnv.ScriptsPath)
+
+		targetEnv.DBConn.Exec("DELETE FROM _cron_jobs")
+		rows, err := sourceEnv.DBConn.Query("SELECT name, schedule, schedule_meta, script_path, active, created FROM _cron_jobs")
+		if err == nil {
+			for rows.Next() {
+				var name, schedule, scriptPath, created string
+				var active int
+				var scheduleMeta sql.NullString
+				rows.Scan(&name, &schedule, &scheduleMeta, &scriptPath, &active, &created)
+				if req.Direction == "prod_to_staging" {
+					active = 0
+				}
+				targetEnv.DBConn.Exec("INSERT INTO _cron_jobs (name, schedule, schedule_meta, script_path, active, created) VALUES (?, ?, ?, ?, ?, ?)",
+					name, schedule, scheduleMeta, scriptPath, active, created)
+			}
+			rows.Close()
+		}
+		targetEnv.initCron()
+	}
+	if req.Collections {
+		var targetCollections []string
+		tRows, _ := targetEnv.DBConn.Query("SELECT name FROM _collections")
+		if tRows != nil {
+			for tRows.Next() {
+				var name string
+				tRows.Scan(&name)
+				targetCollections = append(targetCollections, name)
+			}
+			tRows.Close()
+		}
+
+		for _, tc := range targetCollections {
+			targetEnv.DBConn.Exec("DROP TABLE IF EXISTS " + tc)
+		}
+		targetEnv.DBConn.Exec("DELETE FROM _collections")
+		targetEnv.DBConn.Exec("DELETE FROM _schema")
+
+		var collections []string
+		rows, _ := sourceEnv.DBConn.Query("SELECT name FROM _collections ORDER BY id ASC")
+		if rows != nil {
+			for rows.Next() {
+				var name string
+				rows.Scan(&name)
+				collections = append(collections, name)
+			}
+			rows.Close()
+		}
+
+		for _, cName := range collections {
+			schema := sourceEnv.getCollectionSchema(cName)
+			targetEnv.createCollectionInDB(cName, schema)
+		}
+
+		targetDBPath := filepath.Join(targetEnv.DataPath, "database.sqlite")
+		conn, err := sourceEnv.DBConn.Conn(r.Context())
+		if err == nil {
+			defer conn.Close()
+			_, err = conn.ExecContext(r.Context(), fmt.Sprintf("ATTACH DATABASE '%s' AS target_db", targetDBPath))
+			if err == nil {
+				for _, cName := range collections {
+					conn.ExecContext(r.Context(), fmt.Sprintf("INSERT INTO target_db.%s SELECT * FROM main.%s", cName, cName))
+				}
+				conn.ExecContext(r.Context(), "DETACH DATABASE target_db")
+			}
+		}
+
+		targetEnv.SchemaCache.Range(func(key, value interface{}) bool {
+			targetEnv.SchemaCache.Delete(key)
+			return true
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"success":true}`))
+}
+
+func (env *Environment) handleAdminLogs(w http.ResponseWriter, r *http.Request) {
 	if !hasPermission(r, "logs") {
 		http.Error(w, "Forbidden", 403)
 		return
@@ -868,14 +1103,14 @@ func handleAdminLogs(w http.ResponseWriter, r *http.Request) {
 			args = append(args, level)
 		}
 		query := "SELECT * FROM _logs WHERE " + whereClause + " ORDER BY id DESC"
-		logs, err := queryDB(logDBConn, query, args...)
+		logs, err := queryDB(env.LogDBConn, query, args...)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
 		var total int
 		countQuery := "SELECT COUNT(*) FROM _logs WHERE " + whereClause
-		logDBConn.QueryRow(countQuery, args...).Scan(&total)
+		env.LogDBConn.QueryRow(countQuery, args...).Scan(&total)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -883,7 +1118,7 @@ func handleAdminLogs(w http.ResponseWriter, r *http.Request) {
 			"total": total,
 		})
 	} else if r.Method == "DELETE" {
-		_, err := logDBConn.Exec("DELETE FROM _logs")
+		_, err := env.LogDBConn.Exec("DELETE FROM _logs")
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -893,14 +1128,14 @@ func handleAdminLogs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleAdminKeys(w http.ResponseWriter, r *http.Request) {
+func (env *Environment) handleAdminKeys(w http.ResponseWriter, r *http.Request) {
 	if !hasPermission(r, "keys") {
 		http.Error(w, "Forbidden", 403)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method == "GET" {
-		rows, _ := dbConn.Query("SELECT id, name, key, permissions, created FROM _api_keys ORDER BY id DESC")
+		rows, _ := env.DBConn.Query("SELECT id, name, key, permissions, created FROM _api_keys ORDER BY id DESC")
 		defer rows.Close()
 		results := []map[string]any{}
 		for rows.Next() {
@@ -929,7 +1164,7 @@ func handleAdminKeys(w http.ResponseWriter, r *http.Request) {
 		permsStr := string(pBytes)
 
 		if req.ID > 0 {
-			dbConn.Exec("UPDATE _api_keys SET name=?, permissions=? WHERE id=?", req.Name, permsStr, req.ID)
+			env.DBConn.Exec("UPDATE _api_keys SET name=?, permissions=? WHERE id=?", req.Name, permsStr, req.ID)
 			w.Write([]byte(`{"success":true}`))
 			return
 		}
@@ -937,7 +1172,7 @@ func handleAdminKeys(w http.ResponseWriter, r *http.Request) {
 		b := make([]byte, 16)
 		crand.Read(b)
 		newKey := "sk_" + hex.EncodeToString(b)
-		dbConn.Exec("INSERT INTO _api_keys (key, name, permissions, created) VALUES (?, ?, ?, ?)",
+		env.DBConn.Exec("INSERT INTO _api_keys (key, name, permissions, created) VALUES (?, ?, ?, ?)",
 			newKey, req.Name, permsStr, time.Now().Format("2006-01-02 15:04:05"))
 
 		w.Write([]byte(`{"success":true, "key":"` + newKey + `"}`))
@@ -945,20 +1180,20 @@ func handleAdminKeys(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == "DELETE" {
 		id := r.URL.Query().Get("id")
-		dbConn.Exec("DELETE FROM _api_keys WHERE id = ?", id)
+		env.DBConn.Exec("DELETE FROM _api_keys WHERE id = ?", id)
 		w.Write([]byte(`{"success":true}`))
 		return
 	}
 }
 
-func handleAdminCrons(w http.ResponseWriter, r *http.Request) {
+func (env *Environment) handleAdminCrons(w http.ResponseWriter, r *http.Request) {
 	if !hasPermission(r, "schedules") {
 		http.Error(w, "Forbidden", 403)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method == "GET" {
-		rows, _ := dbConn.Query("SELECT id, name, schedule, schedule_meta, script_path, active, created FROM _cron_jobs ORDER BY id DESC")
+		rows, _ := env.DBConn.Query("SELECT id, name, schedule, schedule_meta, script_path, active, created FROM _cron_jobs ORDER BY id DESC")
 		defer rows.Close()
 		results := []map[string]any{}
 		for rows.Next() {
@@ -995,33 +1230,33 @@ func handleAdminCrons(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if req.ID > 0 {
-			dbConn.Exec("UPDATE _cron_jobs SET name=?, schedule=?, schedule_meta=?, script_path=?, active=? WHERE id=?",
+			env.DBConn.Exec("UPDATE _cron_jobs SET name=?, schedule=?, schedule_meta=?, script_path=?, active=? WHERE id=?",
 				req.Name, req.Schedule, req.ScheduleMeta, req.ScriptPath, activeInt, req.ID)
 		} else {
-			dbConn.Exec("INSERT INTO _cron_jobs (name, schedule, schedule_meta, script_path, active, created) VALUES (?, ?, ?, ?, ?, ?)",
+			env.DBConn.Exec("INSERT INTO _cron_jobs (name, schedule, schedule_meta, script_path, active, created) VALUES (?, ?, ?, ?, ?, ?)",
 				req.Name, req.Schedule, req.ScheduleMeta, req.ScriptPath, activeInt, time.Now().Format("2006-01-02 15:04:05"))
 		}
-		initCron()
+		env.initCron()
 		w.Write([]byte(`{"success":true}`))
 		return
 	}
 	if r.Method == "DELETE" {
 		id := r.URL.Query().Get("id")
-		dbConn.Exec("DELETE FROM _cron_jobs WHERE id = ?", id)
-		initCron()
+		env.DBConn.Exec("DELETE FROM _cron_jobs WHERE id = ?", id)
+		env.initCron()
 		w.Write([]byte(`{"success":true}`))
 		return
 	}
 }
 
-func handleAdminData(w http.ResponseWriter, r *http.Request) {
+func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	path := strings.TrimPrefix(r.URL.Path, "/api/collections")
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 
 	if path == "" || path == "/" {
 		if r.Method == "GET" {
-			rows, _ := dbConn.Query("SELECT * FROM _collections")
+			rows, _ := env.DBConn.Query("SELECT * FROM _collections")
 			cols, _ := rows.Columns()
 			results := []map[string]any{}
 			for rows.Next() {
@@ -1038,7 +1273,7 @@ func handleAdminData(w http.ResponseWriter, r *http.Request) {
 				
 				cName := row["name"].(string)
 				if hasCollectionPermission(r, cName, "item") || hasCollectionPermission(r, cName, "schema") {
-					row["schema"] = getCollectionSchema(cName)
+					row["schema"] = env.getCollectionSchema(cName)
 					results = append(results, row)
 				}
 			}
@@ -1055,7 +1290,7 @@ func handleAdminData(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Forbidden", 403)
 				return
 			}
-			if err := createCollectionInDB(req.Name, req.Schema); err != nil {
+			if err := env.createCollectionInDB(req.Name, req.Schema); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
@@ -1086,7 +1321,7 @@ func handleAdminData(w http.ResponseWriter, r *http.Request) {
 					field, val := searchParts[0], searchParts[1]
 					whereClause += fmt.Sprintf(" AND %s LIKE ?", field)
 
-					schema := getCollectionSchema(collection)
+					schema := env.getCollectionSchema(collection)
 					var fieldType string
 					for _, sf := range schema {
 						if sf.Name == field {
@@ -1107,7 +1342,7 @@ func handleAdminData(w http.ResponseWriter, r *http.Request) {
 						args = append(args, "%"+val+"%")
 					}
 				} else {
-					schema := getCollectionSchema(collection)
+					schema := env.getCollectionSchema(collection)
 					if len(schema) > 0 {
 						var orClauses []string
 						for _, sf := range schema {
@@ -1120,10 +1355,10 @@ func handleAdminData(w http.ResponseWriter, r *http.Request) {
 			}
 
 			var total int
-			dbConn.QueryRow("SELECT COUNT(*) FROM "+collection+" WHERE "+whereClause, args...).Scan(&total)
+			env.DBConn.QueryRow("SELECT COUNT(*) FROM "+collection+" WHERE "+whereClause, args...).Scan(&total)
 
 			query := "SELECT * FROM " + collection + " WHERE " + whereClause + " ORDER BY id DESC"
-			items, err := queryDB(dbConn, query, args...)
+			items, err := queryDB(env.DBConn, query, args...)
 			if err != nil {
 				http.Error(w, err.Error(), 500)
 				return
@@ -1156,7 +1391,7 @@ func handleAdminData(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			q := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", collection, strings.Join(cols, ","), strings.Join(placeholders, ","))
-			if _, err := dbConn.Exec(q, args...); err != nil {
+			if _, err := env.DBConn.Exec(q, args...); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
@@ -1172,7 +1407,7 @@ func handleAdminData(w http.ResponseWriter, r *http.Request) {
 				Schema []SchemaField `json:"schema"`
 			}
 			json.NewDecoder(r.Body).Decode(&req)
-			if err := updateCollectionInDB(collection, req.Schema); err != nil {
+			if err := env.updateCollectionInDB(collection, req.Schema); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
@@ -1192,7 +1427,7 @@ func handleAdminData(w http.ResponseWriter, r *http.Request) {
 				}
 				idList := strings.Split(ids, ",")
 				for _, idStr := range idList {
-					dbConn.Exec("DELETE FROM "+collection+" WHERE id = ?", idStr)
+					env.DBConn.Exec("DELETE FROM "+collection+" WHERE id = ?", idStr)
 				}
 				w.Write([]byte(`{"success":true}`))
 				return
@@ -1201,10 +1436,10 @@ func handleAdminData(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Forbidden", 403)
 				return
 			}
-			dbConn.Exec("DROP TABLE " + collection)
-			dbConn.Exec("DELETE FROM _schema WHERE collection_id = (SELECT id FROM _collections WHERE name = ?)", collection)
-			dbConn.Exec("DELETE FROM _collections WHERE name = ?", collection)
-			schemaCache.Delete(collection)
+			env.DBConn.Exec("DROP TABLE " + collection)
+			env.DBConn.Exec("DELETE FROM _schema WHERE collection_id = (SELECT id FROM _collections WHERE name = ?)", collection)
+			env.DBConn.Exec("DELETE FROM _collections WHERE name = ?", collection)
+			env.SchemaCache.Delete(collection)
 			w.Write([]byte(`{"success":true}`))
 			return
 		}
@@ -1236,7 +1471,7 @@ func handleAdminData(w http.ResponseWriter, r *http.Request) {
 			}
 			args = append(args, id)
 			q := fmt.Sprintf("UPDATE %s SET %s WHERE id = ?", collection, strings.Join(cols, ","))
-			if _, err := dbConn.Exec(q, args...); err != nil {
+			if _, err := env.DBConn.Exec(q, args...); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
@@ -1248,24 +1483,24 @@ func handleAdminData(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Forbidden", 403)
 				return
 			}
-			dbConn.Exec("DELETE FROM "+collection+" WHERE id = ?", id)
+			env.DBConn.Exec("DELETE FROM "+collection+" WHERE id = ?", id)
 			w.Write([]byte(`{"success":true}`))
 			return
 		}
 	}
 }
 
-func handleAdminFiles(w http.ResponseWriter, r *http.Request) {
+func (env *Environment) handleAdminFiles(w http.ResponseWriter, r *http.Request) {
 	base := r.URL.Query().Get("base")
-	baseDir := publicPath
+	baseDir := env.PublicPath
 	permKey := "public"
 
 	if base == "routes" {
-		baseDir = routesPath
+		baseDir = env.RoutesPath
 		permKey = "routes"
 	}
 	if base == "schedules" {
-		baseDir = scriptsPath
+		baseDir = env.ScriptsPath
 		permKey = "schedules"
 	}
 
@@ -1334,7 +1569,6 @@ func handleAdminFiles(w http.ResponseWriter, r *http.Request) {
 
 			for _, fheaders := range r.MultipartForm.File {
 				for _, hdr := range fheaders {
-					// Use filepath.Base to aggressively prevent any folder-escaping filename hacks
 					safeFileName := filepath.Base(hdr.Filename)
 					if safeFileName == "." || safeFileName == "/" || safeFileName == "\\" {
 						continue
@@ -1356,7 +1590,7 @@ func handleAdminFiles(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if base == "routes" {
-				initRoutes()
+				env.initRoutes()
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"success":true}`))
@@ -1383,7 +1617,7 @@ func handleAdminFiles(w http.ResponseWriter, r *http.Request) {
 			os.WriteFile(fullPath, []byte(req.Content), 0644)
 		}
 		if base == "routes" {
-			initRoutes()
+			env.initRoutes()
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"success":true}`))
@@ -1395,7 +1629,7 @@ func handleAdminFiles(w http.ResponseWriter, r *http.Request) {
 		}
 		os.RemoveAll(filepath.Join(baseDir, path))
 		if base == "routes" {
-			initRoutes()
+			env.initRoutes()
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"success":true}`))
@@ -1405,7 +1639,7 @@ func handleAdminFiles(w http.ResponseWriter, r *http.Request) {
 // -----------------------------------------------------------------------------
 // 4. LUA EXTENSIONS & ENGINE
 // -----------------------------------------------------------------------------
-func injectDB(L *lua.LState) {
+func (env *Environment) injectDB(L *lua.LState) {
 	dbTbl := L.NewTable()
 	dbMeta := L.NewTable()
 	L.SetField(dbMeta, "__index", L.NewFunction(func(L *lua.LState) int {
@@ -1420,7 +1654,6 @@ func injectDB(L *lua.LState) {
 			whereVals := []any{}
 			whereCols := []string{"1=1"}
 
-			// query
 			if L.GetTop() >= 2 && L.Get(2).Type() == lua.LTTable {
 				queryTbl := L.CheckTable(2)
 				if queryMap, ok := luaValueToInterface(queryTbl).(map[string]any); ok {
@@ -1431,7 +1664,6 @@ func injectDB(L *lua.LState) {
 				}
 			}
 
-			// limit
 			limit := 0
 			reverseSort := false
 			if L.GetTop() >= 3 && L.Get(3).Type() == lua.LTNumber {
@@ -1440,7 +1672,6 @@ func injectDB(L *lua.LState) {
 				limit = int(math.Abs(limitFloat))
 			}
 
-			// sortBy
 			sortBy := ""
 			if L.GetTop() >= 4 && L.Get(4).Type() == lua.LTString {
 				sortBy = L.CheckString(4)
@@ -1449,7 +1680,6 @@ func injectDB(L *lua.LState) {
 			orderClause := "ORDER BY id ASC"
 			if sortBy != "" {
 				sortCol := sortBy
-				// Default to ascending sort if not explicitly specified
 				if !strings.Contains(strings.ToUpper(sortCol), " ASC") && !strings.Contains(strings.ToUpper(sortCol), " DESC") {
 					sortCol += " ASC"
 				}
@@ -1477,12 +1707,10 @@ func injectDB(L *lua.LState) {
 
 			q := fmt.Sprintf("SELECT * FROM %s WHERE %s %s %s", cName, strings.Join(whereCols, " AND "), orderClause, limitClause)
 
-			// Cache to prevent duplicate tables / circular references
 			tableCache := make(map[string]*lua.LTable)
 
-			// Valid collections to resolve relations
 			colSet := make(map[string]bool)
-			rows, err := dbConn.Query("SELECT name FROM _collections")
+			rows, err := env.DBConn.Query("SELECT name FROM _collections")
 			if err == nil {
 				for rows.Next() {
 					var n string
@@ -1492,13 +1720,12 @@ func injectDB(L *lua.LState) {
 				rows.Close()
 			}
 
-			// Pre-fetch schemas
 			schemas := make(map[string][]SchemaField)
 			getSchema := func(c string) []SchemaField {
 				if s, ok := schemas[c]; ok {
 					return s
 				}
-				s := getCollectionSchema(c)
+				s := env.getCollectionSchema(c)
 				schemas[c] = s
 				return s
 			}
@@ -1511,7 +1738,7 @@ func injectDB(L *lua.LState) {
 				if tbl, ok := tableCache[cacheKey]; ok {
 					return tbl
 				}
-				res, err := queryDB(dbConn, fmt.Sprintf("SELECT * FROM %s WHERE id = ?", colName), idStr)
+				res, err := queryDB(env.DBConn, fmt.Sprintf("SELECT * FROM %s WHERE id = ?", colName), idStr)
 				if err != nil || len(res) == 0 {
 					return nil
 				}
@@ -1527,7 +1754,7 @@ func injectDB(L *lua.LState) {
 				}
 
 				tbl := L.NewTable()
-				tableCache[cacheKey] = tbl // Register early to handle circular references securely
+				tableCache[cacheKey] = tbl
 
 				schema := getSchema(colName)
 
@@ -1544,7 +1771,6 @@ func injectDB(L *lua.LState) {
 					}
 
 					if fType != "" && colSet[fType] {
-						// It's a relation
 						vStr := strings.TrimSpace(fmt.Sprintf("%v", v))
 						if vStr != "" && vStr != "nil" {
 							var idList []interface{}
@@ -1552,7 +1778,7 @@ func injectDB(L *lua.LState) {
 
 							if isArray {
 								if err := json.Unmarshal([]byte(vStr), &idList); err != nil {
-									idList = []interface{}{vStr} // Fallback to raw string array
+									idList = []interface{}{vStr}
 									isArray = false
 								}
 							} else {
@@ -1575,21 +1801,20 @@ func injectDB(L *lua.LState) {
 								if relTbl != nil {
 									tbl.RawSetString(k, relTbl)
 								} else {
-									tbl.RawSetString(k, toLValue(L, v)) // Fallback if record not found
+									tbl.RawSetString(k, toLValue(L, v))
 								}
 							}
 						} else {
 							tbl.RawSetString(k, toLValue(L, v))
 						}
 					} else {
-						// Normal field
 						tbl.RawSetString(k, toLValue(L, v))
 					}
 				}
 				return tbl
 			}
 
-			results, err := queryDB(dbConn, q, whereVals...)
+			results, err := queryDB(env.DBConn, q, whereVals...)
 			if err != nil {
 				L.Push(L.NewTable())
 				return 1
@@ -1637,7 +1862,7 @@ func injectDB(L *lua.LState) {
 				}
 			}
 			q := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", cName, strings.Join(cols, ","), strings.Join(placeholders, ","))
-			res, err := dbConn.Exec(q, args...)
+			res, err := env.DBConn.Exec(q, args...)
 			if err != nil {
 				L.Push(lua.LNil)
 				L.Push(lua.LString(err.Error()))
@@ -1678,7 +1903,7 @@ func injectDB(L *lua.LState) {
 
 			q := fmt.Sprintf("UPDATE %s SET %s WHERE %s", cName, strings.Join(setCols, ", "), strings.Join(whereCols, " AND "))
 			args := append(setVals, whereVals...)
-			_, err := dbConn.Exec(q, args...)
+			_, err := env.DBConn.Exec(q, args...)
 			if err != nil {
 				L.Push(lua.LBool(false))
 				L.Push(lua.LString(err.Error()))
@@ -1700,7 +1925,7 @@ func injectDB(L *lua.LState) {
 			}
 
 			q := fmt.Sprintf("DELETE FROM %s WHERE %s", cName, strings.Join(whereCols, " AND "))
-			_, err := dbConn.Exec(q, whereVals...)
+			_, err := env.DBConn.Exec(q, whereVals...)
 			if err != nil {
 				L.Push(lua.LBool(false))
 				L.Push(lua.LString(err.Error()))
@@ -1710,14 +1935,12 @@ func injectDB(L *lua.LState) {
 			return 1
 		}))
 
-		// Implement callable metatable so any collection (or "exec") can safely handle raw SQL routing
 		colMeta := L.NewTable()
 		L.SetField(colMeta, "__call", L.NewFunction(func(L *lua.LState) int {
 			arg1 := L.Get(2)
 			var query string
 			var startArg int
 
-			// Determine if called as db:exec(...) or db.exec(...) based on first arg type
 			if arg1.Type() == lua.LTTable {
 				query = L.CheckString(3)
 				startArg = 4
@@ -1737,7 +1960,7 @@ func injectDB(L *lua.LState) {
 
 			queryUpper := strings.ToUpper(strings.TrimSpace(query))
 			if strings.HasPrefix(queryUpper, "SELECT") || strings.HasPrefix(queryUpper, "PRAGMA") {
-				results, err := queryDB(dbConn, query, args...)
+				results, err := queryDB(env.DBConn, query, args...)
 				if err != nil {
 					L.Push(lua.LNil)
 					L.Push(lua.LString(err.Error()))
@@ -1750,7 +1973,7 @@ func injectDB(L *lua.LState) {
 				L.Push(arr)
 				return 1
 			} else {
-				res, err := dbConn.Exec(query, args...)
+				res, err := env.DBConn.Exec(query, args...)
 				if err != nil {
 					L.Push(lua.LBool(false))
 					L.Push(lua.LString(err.Error()))
@@ -1824,17 +2047,14 @@ type Route struct {
 	FilePath string
 }
 
-var routes []Route
-var routesMu sync.RWMutex
-
-func initRoutes() {
+func (env *Environment) initRoutes() {
 	paramRegex := regexp.MustCompile(`\[([^/]+)\]`)
 	var newRoutes []Route
-	filepath.Walk(routesPath, func(path string, info os.FileInfo, err error) error {
+	filepath.Walk(env.RoutesPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || filepath.Ext(path) != ".lua" {
 			return nil
 		}
-		relPath, _ := filepath.Rel(routesPath, path)
+		relPath, _ := filepath.Rel(env.RoutesPath, path)
 		urlPath := "/" + strings.TrimSuffix(filepath.ToSlash(relPath), ".lua")
 		if strings.HasSuffix(urlPath, "/index") {
 			urlPath = strings.TrimSuffix(urlPath, "index")
@@ -1858,16 +2078,16 @@ func initRoutes() {
 		return len(newRoutes[i].FilePath) > len(newRoutes[j].FilePath)
 	})
 
-	routesMu.Lock()
-	routes = newRoutes
-	routesMu.Unlock()
+	env.RoutesMu.Lock()
+	env.Routes = newRoutes
+	env.RoutesMu.Unlock()
 }
 
-func matchRoute(urlPath string) (*Route, map[string]string) {
-	routesMu.RLock()
-	defer routesMu.RUnlock()
+func (env *Environment) matchRoute(urlPath string) (*Route, map[string]string) {
+	env.RoutesMu.RLock()
+	defer env.RoutesMu.RUnlock()
 
-	for _, r := range routes {
+	for _, r := range env.Routes {
 		if m := r.Pattern.FindStringSubmatch(urlPath); m != nil {
 			params := make(map[string]string)
 			for i, name := range r.Pattern.SubexpNames() {
@@ -1882,14 +2102,11 @@ func matchRoute(urlPath string) (*Route, map[string]string) {
 	return nil, nil
 }
 
-var luaPool *sync.Pool
-
-func createLuaState() *lua.LState {
+func (env *Environment) createLuaState() *lua.LState {
 	L := lua.NewState(lua.Options{
 		SkipOpenLibs: true,
 	})
 
-	// Load explicitly safe core libraries
 	safeLibs := map[string]lua.LGFunction{
 		lua.LoadLibName:      lua.OpenPackage,
 		lua.BaseLibName:      lua.OpenBase,
@@ -1911,7 +2128,7 @@ func createLuaState() *lua.LState {
 		paths := strings.Split(pathStr, ";")
 		var newPaths []string
 
-		rootSlash := strings.TrimSuffix(filepath.ToSlash(rootDir), "/")
+		rootSlash := strings.TrimSuffix(filepath.ToSlash(env.BaseDir), "/")
 		if rootSlash == "" {
 			newPaths = append(newPaths, "/?.lua", "/?/init.lua")
 		} else {
@@ -1928,14 +2145,12 @@ func createLuaState() *lua.LState {
 	}
 
 	if !appSettings.UnsafeLua {
-		// Strip dangerous OS functions
 		osTbl := L.GetGlobal("os").(*lua.LTable)
 		dangerous := []string{"execute", "exit", "remove", "rename", "setenv", "getenv", "tmpname"}
 		for _, op := range dangerous {
 			L.SetField(osTbl, op, lua.LNil)
 		}
 	} else {
-		// Load unsafe libraries
 		L.Push(L.NewFunction(lua.OpenIo))
 		L.Push(lua.LString(lua.IoLibName))
 		L.Call(1, 0)
@@ -1945,39 +2160,37 @@ func createLuaState() *lua.LState {
 		L.Call(1, 0)
 	}
 
-	// Inject Mogo API
-	injectDB(L)
-	injectMgoAPI(L)
+	env.injectDB(L)
+	env.injectMgoAPI(L)
 
 	return L
 }
 
-func initLuaPool() {
-	luaPool = &sync.Pool{
+func (env *Environment) initLuaPool() {
+	env.LuaPool = &sync.Pool{
 		New: func() any {
-			return createLuaState()
+			return env.createLuaState()
 		},
 	}
 }
 
-func injectMgoAPI(L *lua.LState) {
+func (env *Environment) injectMgoAPI(L *lua.LState) {
 	logMod := L.NewTable()
 	L.SetField(logMod, "info", L.NewFunction(func(L *lua.LState) int {
-		appLog("info", getScript(L), "lua", L.CheckString(1))
+		env.appLog("info", getScript(L), "lua", L.CheckString(1))
 		return 0
 	}))
 	L.SetField(logMod, "warn", L.NewFunction(func(L *lua.LState) int {
-		appLog("warn", getScript(L), "lua", L.CheckString(1))
+		env.appLog("warn", getScript(L), "lua", L.CheckString(1))
 		return 0
 	}))
 	L.SetField(logMod, "error", L.NewFunction(func(L *lua.LState) int {
-		appLog("error", getScript(L), "lua", L.CheckString(1))
+		env.appLog("error", getScript(L), "lua", L.CheckString(1))
 		return 0
 	}))
 	L.SetField(logMod, "get", L.NewFunction(func(L *lua.LState) int {
 		limit := 1
 		argIdx := 1
-		// Handle colon syntax `log:get(5)` where the module table is the first argument
 		if L.GetTop() >= 1 && L.Get(1).Type() == lua.LTTable {
 			argIdx = 2
 		}
@@ -1989,8 +2202,8 @@ func injectMgoAPI(L *lua.LState) {
 		}
 
 		arr := L.NewTable()
-		if logDBConn != nil {
-			rows, err := logDBConn.Query("SELECT id, timestamp, level, origin, script_path, message FROM _logs ORDER BY id DESC LIMIT ?", limit)
+		if env.LogDBConn != nil {
+			rows, err := env.LogDBConn.Query("SELECT id, timestamp, level, origin, script_path, message FROM _logs ORDER BY id DESC LIMIT ?", limit)
 			if err == nil {
 				defer rows.Close()
 				i := 1
@@ -2111,17 +2324,16 @@ func toLValue(L *lua.LState, val interface{}) lua.LValue {
 	}
 }
 
-func mogoHandler(w http.ResponseWriter, r *http.Request) {
-	route, params := matchRoute(r.URL.Path)
+func (env *Environment) mogoHandler(w http.ResponseWriter, r *http.Request) {
+	route, params := env.matchRoute(r.URL.Path)
 	if route == nil {
 		http.Error(w, "404 Not Found", 404)
 		return
 	}
 
-	L := luaPool.Get().(*lua.LState)
+	L := env.LuaPool.Get().(*lua.LState)
 	top := L.GetTop()
 
-	// Timeouts for requests to prevent infinite loops (DOS protection)
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	L.SetContext(ctx)
 
@@ -2131,27 +2343,26 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 		if !handoff {
 			L.RemoveContext()
 			L.SetTop(top)
-			luaPool.Put(L)
+			env.LuaPool.Put(L)
 		}
 	}()
 
 	fn, err := L.LoadFile(route.FilePath)
 	if err != nil {
-		appLog("error", route.FilePath, "router", err.Error())
+		env.appLog("error", route.FilePath, "router", err.Error())
 		http.Error(w, "500 Internal Server Error", 500)
 		return
 	}
 
-	// Environment isolation to prevent leaking global state between pooled requests
-	env := L.NewTable()
+	luaEnv := L.NewTable()
 	mt := L.NewTable()
 	L.SetField(mt, "__index", L.Get(lua.GlobalsIndex))
-	L.SetMetatable(env, mt)
-	fn.Env = env
+	L.SetMetatable(luaEnv, mt)
+	fn.Env = luaEnv
 
 	L.Push(fn)
 	if err := L.PCall(0, 1, nil); err != nil {
-		appLog("error", route.FilePath, "execution", err.Error())
+		env.appLog("error", route.FilePath, "execution", err.Error())
 		http.Error(w, "500 Internal Server Error: execution failed", 500)
 		return
 	}
@@ -2173,7 +2384,6 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build req table
 	reqTable := L.NewTable()
 	reqTable.RawSetString("method", lua.LString(r.Method))
 	reqTable.RawSetString("path", lua.LString(r.URL.Path))
@@ -2207,7 +2417,6 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	reqTable.RawSetString("cookies", cookiesTable)
 
-	// Body Parsing
 	if strings.Contains(r.Header.Get("Content-Type"), "application/json") {
 		var body interface{}
 		if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
@@ -2242,7 +2451,7 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 
 					targetPath := destPath
 					if !filepath.IsAbs(targetPath) {
-						targetPath = filepath.Join(rootDir, targetPath)
+						targetPath = filepath.Join(env.BaseDir, targetPath)
 					}
 					absTarget, err := filepath.Abs(targetPath)
 					if err != nil {
@@ -2251,11 +2460,10 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 						return 2
 					}
 
-					// Security Jail check
 					if !appSettings.UnsafeLua {
-						absUploads, _ := filepath.Abs(uploadsPath)
+						absUploads, _ := filepath.Abs(env.UploadsPath)
 						if absTarget != absUploads && !strings.HasPrefix(absTarget, absUploads+string(filepath.Separator)) {
-							appLog("warn", getScript(L), "security", "Blocked attempt to write file outside uploads directory: "+destPath)
+							env.appLog("warn", getScript(L), "security", "Blocked attempt to write file outside uploads directory: "+destPath)
 							L.Push(lua.LBool(false))
 							L.Push(lua.LString("access denied: path escapes secure directory"))
 							return 2
@@ -2297,7 +2505,6 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	reqTable.RawSetString("files", filesTable)
 
-	// Build res table
 	resTable := L.NewTable()
 	resTable.RawSetString("status", lua.LNumber(200))
 	resTable.RawSetString("headers", L.NewTable())
@@ -2307,10 +2514,9 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 		pathStr := L.CheckString(2)
 		filename := L.OptString(3, filepath.Base(pathStr))
 
-		// Security Jail check
 		if !appSettings.UnsafeLua {
-			absBase, _ := filepath.Abs(publicPath)
-			absTarget, _ := filepath.Abs(filepath.Join(publicPath, pathStr))
+			absBase, _ := filepath.Abs(env.PublicPath)
+			absTarget, _ := filepath.Abs(filepath.Join(env.PublicPath, pathStr))
 			if !strings.HasPrefix(absTarget, absBase) {
 				L.RaiseError("access denied: path escapes secure directory")
 				return 0
@@ -2333,7 +2539,7 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 	}, reqTable, resTable)
 
 	if err != nil {
-		appLog("error", route.FilePath, "execution", err.Error())
+		env.appLog("error", route.FilePath, "execution", err.Error())
 		http.Error(w, "500 Internal Server Error: execution failed", 500)
 		return
 	}
@@ -2344,7 +2550,6 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 	var postHook *lua.LFunction
 	var bodyVal lua.LValue
 
-	// Process Returns
 	if nRet > 0 {
 		last := L.Get(callTop + nRet)
 		if last.Type() == lua.LTFunction {
@@ -2373,7 +2578,6 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 		resTable.RawSetString("body", bodyVal)
 	}
 
-	// Set Cookies
 	if cookiesTbl, ok := resTable.RawGetString("cookies").(*lua.LTable); ok {
 		cookiesTbl.ForEach(func(k, v lua.LValue) {
 			cookie := &http.Cookie{Name: k.String(), Path: "/"}
@@ -2417,12 +2621,12 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 	launchPostHook := func() {
 		if postHook != nil {
 			handoff = true
-			L.RemoveContext() // clear the HTTP request context bound to L
+			L.RemoveContext() 
 			go func(state *lua.LState, hook *lua.LFunction, lTop int, rPath string) {
 				defer func() {
 					state.RemoveContext()
 					state.SetTop(lTop)
-					luaPool.Put(state)
+					env.LuaPool.Put(state)
 				}()
 
 				bgCtx, bgCancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -2431,13 +2635,12 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 
 				state.Push(hook)
 				if err := state.PCall(0, 0, nil); err != nil {
-					appLog("error", rPath, "post-hook", err.Error())
+					env.appLog("error", rPath, "post-hook", err.Error())
 				}
 			}(L, postHook, top, route.FilePath)
 		}
 	}
 
-	// Trigger File Download
 	if filePath := resTable.RawGetString("_file_path"); filePath.Type() == lua.LTString {
 		fileName := resTable.RawGetString("_file_name").String()
 		w.Header().Set("Content-Disposition", "attachment; filename=\""+fileName+"\"")
@@ -2446,12 +2649,10 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Apply Headers
 	resHeaders.ForEach(func(k, v lua.LValue) {
 		w.Header()[k.String()] = []string{v.String()}
 	})
 
-	// Dispatch Response Status and Body
 	status := int(resTable.RawGetString("status").(lua.LNumber))
 	w.WriteHeader(status)
 
@@ -2462,38 +2663,8 @@ func mogoHandler(w http.ResponseWriter, r *http.Request) {
 	launchPostHook()
 }
 
-func main() {
-	rootDir = "."
-	cliPort := 0
-	for _, arg := range os.Args[1:] {
-		if strings.HasPrefix(arg, "--dir=") {
-			rootDir = strings.TrimPrefix(arg, "--dir=")
-		}
-		if strings.HasPrefix(arg, "--port=") {
-			if p, err := strconv.Atoi(strings.TrimPrefix(arg, "--port=")); err == nil {
-				cliPort = p
-			}
-		}
-	}
-
-	dataPath = filepath.Join(rootDir, "data")
-	publicPath = filepath.Join(rootDir, "public")
-	routesPath = filepath.Join(rootDir, "routes")
-	scriptsPath = filepath.Join(rootDir, "scripts")
-	uploadsPath = filepath.Join(rootDir, "uploads")
-
-	loadSettings()
-	initDB()
-
-	for _, arg := range os.Args[1:] {
-		if arg == "--new-key" {
-			generateNewMasterKey()
-			os.Exit(0)
-		}
-	}
-
-	initRoutes()
-	initCron()
+func startServer(env *Environment, port int) {
+	mux := http.NewServeMux()
 
 	adminStatic := adminLockoutMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/admin/")
@@ -2519,41 +2690,38 @@ func main() {
 		}
 		http.StripPrefix("/admin/", http.FileServer(http.FS(embedFS))).ServeHTTP(w, r)
 	})
-	http.Handle("/admin/", adminStatic)
+	mux.Handle("/admin/", adminStatic)
 
-	http.HandleFunc("/api/auth/login", adminLockoutMiddleware(handleAdminLogin))
-	http.HandleFunc("/api/auth/check", adminMiddleware(handleAuthCheck))
-	http.HandleFunc("/api/settings", adminMiddleware(handleAdminSettings))
-	http.HandleFunc("/api/backup", adminMiddleware(handleAdminBackup))
-	http.HandleFunc("/api/keys", adminMiddleware(handleAdminKeys))
-	http.HandleFunc("/api/logs", adminMiddleware(handleAdminLogs))
+	mux.HandleFunc("/api/auth/login", adminLockoutMiddleware(env.handleAdminLogin))
+	mux.HandleFunc("/api/auth/check", env.adminMiddleware(env.handleAuthCheck))
+	if !env.IsStaging {
+		mux.HandleFunc("/api/settings", env.adminMiddleware(env.handleAdminSettings))
+		mux.HandleFunc("/api/backup", env.adminMiddleware(env.handleAdminBackup))
+		mux.HandleFunc("/api/keys", env.adminMiddleware(env.handleAdminKeys))
+		mux.HandleFunc("/api/staging/sync", env.adminMiddleware(env.handleStagingSync))
+	}
+	mux.HandleFunc("/api/logs", env.adminMiddleware(env.handleAdminLogs))
 
-	http.HandleFunc("/api/crons", adminMiddleware(handleAdminCrons))
-	http.HandleFunc("/api/collections", adminMiddleware(handleAdminData))
-	http.HandleFunc("/api/collections/", adminMiddleware(handleAdminData))
-	http.HandleFunc("/api/files", adminMiddleware(handleAdminFiles))
+	mux.HandleFunc("/api/crons", env.adminMiddleware(env.handleAdminCrons))
+	mux.HandleFunc("/api/collections", env.adminMiddleware(env.handleAdminData))
+	mux.HandleFunc("/api/collections/", env.adminMiddleware(env.handleAdminData))
+	mux.HandleFunc("/api/files", env.adminMiddleware(env.handleAdminFiles))
 
-	http.HandleFunc("/", corsAndRateLimitMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		// Clean the requested path and securely bind it to the designated files directory
+	mux.HandleFunc("/", env.corsAndRateLimitMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		cleanPath := filepath.Clean(filepath.FromSlash(r.URL.Path))
-		targetPath := filepath.Join(publicPath, cleanPath)
+		targetPath := filepath.Join(env.PublicPath, cleanPath)
 
-		absBase, err1 := filepath.Abs(publicPath)
+		absBase, err1 := filepath.Abs(env.PublicPath)
 		absTarget, err2 := filepath.Abs(targetPath)
 
-		// Ensure the requested file doesn't escape the secure directory
 		if err1 == nil && err2 == nil && (absTarget == absBase || strings.HasPrefix(absTarget, absBase+string(filepath.Separator))) {
 			if info, err := os.Stat(absTarget); err == nil {
-				// If it's a regular file, serve it directly
 				if !info.IsDir() {
 					http.ServeFile(w, r, absTarget)
 					return
 				}
-
-				// If it's a directory, check if it contains an index.html file
 				indexTarget := filepath.Join(absTarget, "index.html")
 				if idxInfo, idxErr := os.Stat(indexTarget); idxErr == nil && !idxInfo.IsDir() {
-					// Enforce trailing slash on directory indices
 					if !strings.HasSuffix(r.URL.Path, "/") {
 						http.Redirect(w, r, r.URL.Path+"/", http.StatusMovedPermanently)
 						return
@@ -2564,9 +2732,78 @@ func main() {
 			}
 		}
 
-		// Fallback to Lua routes if no static file matched
-		mogoHandler(w, r)
+		env.mogoHandler(w, r)
 	}))
+
+	addr := fmt.Sprintf(":%d", port)
+	log.Printf("Starting Mogo %s API on http://localhost%s", map[bool]string{false: "Production", true: "Staging"}[env.IsStaging], addr)
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		log.Fatal(err)
+	}
+}
+
+var stagingStarted bool
+
+func startStagingServer() {
+	if stagingStarted {
+		return
+	}
+	stagingStarted = true
+
+	if StagingEnv == nil {
+		StagingEnv = NewEnvironment(filepath.Join(rootDir, "staging"), true)
+		StagingEnv.initDB()
+		StagingEnv.initRoutes()
+		StagingEnv.initLuaPool()
+		StagingEnv.initCron()
+	}
+
+	stagingPort := appSettings.StagingPort
+	if stagingPort <= 0 {
+		stagingPort = 8090
+	}
+
+	go startServer(StagingEnv, stagingPort)
+}
+
+func main() {
+	rootDir = "."
+	cliPort := 0
+	cliStagingPort := 0
+	for _, arg := range os.Args[1:] {
+		if strings.HasPrefix(arg, "--dir=") {
+			rootDir = strings.TrimPrefix(arg, "--dir=")
+		}
+		if strings.HasPrefix(arg, "--port=") {
+			if p, err := strconv.Atoi(strings.TrimPrefix(arg, "--port=")); err == nil {
+				cliPort = p
+			}
+		}
+		if strings.HasPrefix(arg, "--staging-port=") {
+			if p, err := strconv.Atoi(strings.TrimPrefix(arg, "--staging-port=")); err == nil {
+				cliStagingPort = p
+			}
+		}
+	}
+
+	ProdEnv = NewEnvironment(rootDir, false)
+	loadSettings()
+
+	if cliStagingPort != 0 {
+		appSettings.StagingPort = cliStagingPort
+	}
+
+	ProdEnv.initDB()
+
+	for _, arg := range os.Args[1:] {
+		if arg == "--new-key" {
+			generateNewMasterKey()
+			os.Exit(0)
+		}
+	}
+
+	ProdEnv.initRoutes()
+	ProdEnv.initCron()
 
 	finalPort := appSettings.Port
 	if cliPort != 0 {
@@ -2576,9 +2813,11 @@ func main() {
 		finalPort = 8080
 	}
 
-	addr := fmt.Sprintf(":%d", finalPort)
-	log.Printf("Starting Mogo Admin API on http://localhost%s", addr)
-	if err := http.ListenAndServe(addr, nil); err != nil {
-		log.Fatal(err)
+	go startServer(ProdEnv, finalPort)
+
+	if appSettings.StagingEnabled {
+		startStagingServer()
 	}
+
+	select {}
 }

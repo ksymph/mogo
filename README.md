@@ -19,6 +19,7 @@ Note: included in the `util/` folder of this repo are some assorted utility scri
 ### CLI Flags
 
 *   `--port=8080`: Set the HTTP port (overrides port set in settings; default 8080)
+*   `--staging-port=8090`: Set port for staging environment (overrides port in settings; default 8090)
 *   `--dir=/path/to/dir`: Set a custom root directory for Mogo's folders
 *   `--new-key`: Generate and display a new API key with all permissions, then exit
 

@@ -48,7 +48,7 @@
         OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
         SOFTWARE.
       -->
-      <div class="icon-btn" onclick="nav('keys')" title="API Keys">
+      <div class="icon-btn" id="nav-keys-btn" onclick="nav('keys')" title="API Keys">
         <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path
             d="M10 12C10 14.2091 8.20914 16 6 16C3.79086 16 2 14.2091 2 12C2 9.79086 3.79086 8 6 8C8.20914 8 10 9.79086 10 12ZM10 12H22V15"
@@ -107,7 +107,7 @@
           <line x1="3" y1="18" x2="3.01" y2="18"></line>
         </svg>
       </div>
-      <div class="icon-btn" onclick="nav('settings')" title="Settings">
+      <div class="icon-btn" id="nav-settings-btn" onclick="nav('settings')" title="Settings">
         <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path
             d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z"
@@ -117,6 +117,14 @@
             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
       </div>
+      <div class="icon-btn" id="nav-staging-btn" onclick="nav('staging')" title="Staging">
+        <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3 20.4V3.6C3 3.26863 3.26863 3 3.6 3H20.4C20.7314 3 21 3.26863 21 3.6V20.4C21 20.7314 20.7314 21 20.4 21H3.6C3.26863 21 3 20.7314 3 20.4Z"
+          stroke="currentColor" stroke-width="2"></path>
+          <path d="M6 18L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+          <path d="M12 14V6M12 6L15.5 9.5M12 6L8.5 9.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </div>
+      <div id="staging-label" style="display:none; writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; font-weight: bold; flex-grow: 1; align-items: center; justify-content: center; letter-spacing: 4px; color: var(--accent); font-size: 1.2rem; opacity: 0.8; user-select: none;">STAGING</div>
     </div>
 
     <div id="sub-sidebar" class="sub-sidebar"></div>
@@ -194,6 +202,7 @@
 let state = {
     tab: '', sub: '', data: [], schema:[], selected: new Set(),
     collections: [], keys: [], crons:[], settings: null,
+    environment: 'production',
     sort: { col: 'id', asc: true },
     openFolders: {}
   };
@@ -460,8 +469,13 @@ let state = {
       }
 
       try {
-        await api('/auth/check');
-        state.settings = await api('/settings');
+        const authRes = await api('/auth/check');
+        state.environment = authRes.environment;
+        if (state.environment === 'production') {
+          state.settings = await api('/settings');
+        } else {
+          state.settings = {};
+        }
         showApp();
       } catch { showLogin(); }
     }
@@ -470,20 +484,43 @@ let state = {
       e.preventDefault();
       try {
         await api('/auth/login', { method: 'POST', body: { api_key: document.getElementById('api-key').value } });
-        state.settings = await api('/settings');
+        const authRes = await api('/auth/check');
+        state.environment = authRes.environment;
+        if (state.environment === 'production') {
+          state.settings = await api('/settings');
+        } else {
+          state.settings = {};
+        }
         showApp();
       } catch (e) { alert("Invalid API Key"); }
     };
 
     function showLogin() { document.getElementById('app-view').style.display = 'none'; document.getElementById('login-view').style.display = 'flex'; }
-    function showApp() { document.getElementById('login-view').style.display = 'none'; document.getElementById('app-view').style.display = 'flex'; nav('collections'); }
+    
+    function showApp() { 
+      document.getElementById('login-view').style.display = 'none'; 
+      document.getElementById('app-view').style.display = 'flex'; 
+      
+      if (state.environment === 'staging') {
+        document.getElementById('nav-keys-btn').style.display = 'none';
+        document.getElementById('nav-staging-btn').style.display = 'none';
+        document.getElementById('nav-settings-btn').style.display = 'none';
+        document.getElementById('staging-label').style.display = 'flex';
+      } else {
+        document.getElementById('nav-keys-btn').style.display = 'flex';
+        document.getElementById('nav-staging-btn').style.display = 'flex';
+        document.getElementById('nav-settings-btn').style.display = 'flex';
+        document.getElementById('staging-label').style.display = 'none';
+      }
+
+      nav('collections'); 
+    }
 
     function nav(tab) {
       state.tab = tab; state.sub = ''; state.search = '';
       state.sort = { col: 'id', asc: true };
       document.querySelectorAll('.icon-btn').forEach(e => e.classList.remove('active'));
 
-      // Automatically select appropriate icon if calling nav('...') programmatically or via click
       let iconBtn = document.querySelector(`.icon-btn[onclick="nav('${tab}')"]`);
       if (iconBtn) iconBtn.classList.add('active');
 
@@ -496,6 +533,7 @@ let state = {
       if (tab === 'collections') loadCollections();
       if (tab === 'keys') loadKeys();
       if (tab === 'settings') loadSettings('admin');
+      if (tab === 'staging') loadStaging();
       if (tab === 'logs') loadLogs();
       if (tab === 'routes' || tab === 'public' || tab === 'schedules') loadFiles(tab);
     }
@@ -791,6 +829,8 @@ let state = {
       let html = `<div class="form-field"><input id="k-name" placeholder=" "><label>Key name</label></div>
       <h4>Permissions</h4>
       <div class="form-block">
+              <label class="form-check"><span>Production Environment</span><input type="checkbox" id="pk_production" checked></label>
+              <label class="form-check"><span>Staging Environment</span><input type="checkbox" id="pk_staging" checked></label>
               <label class="form-check"><span>Routes</span><input type="checkbox" id="pk_routes"></label>
               <label class="form-check"><span>Schedules</span><input type="checkbox" id="pk_schedules"></label>
               <label class="form-check"><span>Public</span><input type="checkbox" id="pk_public"></label>
@@ -821,7 +861,10 @@ let state = {
             if (document.getElementById(`pk_s_${name}`).checked) perms.collections[name].push("schema");
           }
         });
-      }["routes", "public", "schedules", "settings", "keys"].forEach(k => { if (document.getElementById(`pk_${k}`).checked) perms[k] = true; });
+      }["routes", "public", "schedules", "settings", "keys", "production", "staging"].forEach(k => { 
+        let el = document.getElementById(`pk_${k}`);
+        if (el && el.checked) perms[k] = true; 
+      });
 
       let name = document.getElementById('k-name').value;
       await api('/keys', { method: 'POST', body: { name, permissions: perms } });
@@ -934,8 +977,7 @@ async function loadSettings(sub = 'admin') {
   }
 
   // App settings logic
-  const s = await api('/settings');
-  state.settings = s;
+  const s = state.settings;
 
   let mode = 'disabled';
   let bkpD = '', bkpH = '', bkpM = '', bkpS = '';
@@ -954,6 +996,11 @@ async function loadSettings(sub = 'admin') {
           <input type="number" id="s-port" value="${s.port || 8080}" placeholder=" " min="1" max="65535">
           <label>Port</label>
         </div>
+        <div class="form-field">
+          <input type="number" id="s-staging-port" value="${s.staging_port || 8090}" placeholder=" " min="1" max="65535">
+          <label>Staging Port</label>
+        </div>
+        <div class="form-check"><label><span>Enable Staging Environment</span> <input type="checkbox" id="s-staging-enabled" ${s.staging_enabled ? 'checked' : ''}></label></div>
         <div class="hint">Restart the server for port changes to take effect.</div>
       </div>
       
@@ -1055,6 +1102,8 @@ async function loadSettings(sub = 'admin') {
 
       let payload = {
         port: parseInt(document.getElementById('s-port').value, 10) || 8080,
+        staging_enabled: document.getElementById('s-staging-enabled').checked,
+        staging_port: parseInt(document.getElementById('s-staging-port').value, 10) || 8090,
         backup_dest_dir: document.getElementById('s-bkp-dir').value,
         backup_full: document.querySelector('input[name="bkp_scope"]:checked').value === 'all',
         backup_sched: schedule,
@@ -1069,6 +1118,63 @@ async function loadSettings(sub = 'admin') {
       await api('/settings', { method: 'POST', body: payload });
       state.settings = payload;
       document.getElementById('btn-save-settings').disabled = true;
+    }
+
+    // ---------- staging dashboard ----------
+    function loadStaging() {
+      document.getElementById('pane-header').innerHTML = '<h2>Staging Sync</h2>';
+      document.getElementById('pane-content').innerHTML = `
+        <div class="settings-form">
+          <div class="modal" style="flex:1">
+            <h3>Production ➔ Staging</h3>
+            <p class="hint">Overwrite staging environment with production data.</p>
+            <div class="form-check mt-2"><label><span>Collections (Data & Schema)</span><input type="checkbox" id="ps_collections" checked></label></div>
+            <div class="form-check"><label><span>Routes (Lua)</span><input type="checkbox" id="ps_routes" checked></label></div>
+            <div class="form-check"><label><span>Public Files</span><input type="checkbox" id="ps_public" checked></label></div>
+            <div class="form-check"><label><span>Schedules (Scripts & Cron)</span><input type="checkbox" id="ps_schedules" checked></label></div>
+            <button class="btn" id="btn-sync-ps" onclick="syncStaging('prod_to_staging')">Copy to Staging</button>
+          </div>
+          
+          <div class="modal" style="flex:1">
+            <h3>Staging ➔ Production</h3>
+            <p class="hint">Promote staging changes to production.</p>
+            <div class="form-check mt-2"><label><span>Collections (Data & Schema)</span><input type="checkbox" id="sp_collections"></label></div>
+            <div class="form-check"><label><span>Routes (Lua)</span><input type="checkbox" id="sp_routes"></label></div>
+            <div class="form-check"><label><span>Public Files</span><input type="checkbox" id="sp_public"></label></div>
+            <div class="form-check"><label><span>Schedules (Scripts & Cron)</span><input type="checkbox" id="sp_schedules"></label></div>
+            <button class="btn" id="btn-sync-sp" onclick="syncStaging('staging_to_prod')">Copy to Production</button>
+          </div>
+        </div>
+      `;
+    }
+
+    async function syncStaging(direction) {
+      const prefix = direction === 'prod_to_staging' ? 'ps_' : 'sp_';
+      const btn = document.getElementById(direction === 'prod_to_staging' ? 'btn-sync-ps' : 'btn-sync-sp');
+      
+      if (!confirm(`Are you sure you want to run this sync (${direction})? This will completely overwrite the target environment's chosen data.`)) return;
+
+      const origText = btn.innerText;
+      btn.disabled = true;
+      btn.innerText = "Syncing...";
+
+      const payload = {
+        direction: direction,
+        collections: document.getElementById(prefix + 'collections').checked,
+        routes: document.getElementById(prefix + 'routes').checked,
+        public: document.getElementById(prefix + 'public').checked,
+        schedules: document.getElementById(prefix + 'schedules').checked
+      };
+
+      try {
+        await api('/staging/sync', { method: 'POST', body: payload });
+        alert("Sync successful!");
+      } catch (e) {
+        alert("Sync failed: " + e.message);
+      }
+      
+      btn.disabled = false;
+      btn.innerText = origText;
     }
 
     // ---------- relations nested modal ----------
