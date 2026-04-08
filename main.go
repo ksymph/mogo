@@ -238,8 +238,8 @@ func (env *Environment) initSystemTables() {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT UNIQUE NOT NULL,
 			type TEXT DEFAULT 'base',
-			created TEXT,
-			updated TEXT
+			created INTEGER,
+			updated INTEGER
 		);`,
 		`CREATE TABLE IF NOT EXISTS _schema (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -255,7 +255,7 @@ func (env *Environment) initSystemTables() {
 			key TEXT UNIQUE NOT NULL,
 			name TEXT NOT NULL,
 			permissions TEXT DEFAULT '{}',
-			created TEXT
+			created INTEGER
 		);`,
 		`CREATE TABLE IF NOT EXISTS _cron_jobs (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -264,7 +264,7 @@ func (env *Environment) initSystemTables() {
 			schedule_meta TEXT,
 			script_path TEXT NOT NULL,
 			active BOOLEAN DEFAULT 1,
-			created TEXT
+			created INTEGER
 		);`,
 	}
 	for _, q := range queries {
@@ -287,7 +287,7 @@ func (env *Environment) initMasterKey() {
 
 		allPerms := `{"production":true,"staging":true,"collections":{"*":["item","schema"]},"routes":true,"schedules":true,"public":true,"settings":true,"keys":true,"logs":true}`
 		env.DBConn.Exec("INSERT INTO _api_keys (key, name, permissions, created) VALUES (?, ?, ?, ?)",
-			newKey, "admin", allPerms, time.Now().Format("2006-01-02 15:04:05"))
+			newKey, "admin", allPerms, time.Now().Unix())
 
 		fmt.Println("\n=================================================================")
 		fmt.Printf(" INITIAL API KEY: %s\n", newKey)
@@ -303,7 +303,7 @@ func generateNewMasterKey() {
 
 	allPerms := `{"production":true,"staging":true,"collections":{"*":["item","schema"]},"routes":true,"schedules":true,"public":true,"settings":true,"keys":true,"logs":true}`
 	ProdEnv.DBConn.Exec("INSERT INTO _api_keys (key, name, permissions, created) VALUES (?, ?, ?, ?)",
-		newKey, "cli-generated", allPerms, time.Now().Format("2006-01-02 15:04:05"))
+		newKey, "cli-generated", allPerms, time.Now().Unix())
 
 	fmt.Println("\n=================================================================")
 	fmt.Printf(" NEW API KEY GENERATED: %s\n", newKey)
@@ -621,13 +621,13 @@ func (env *Environment) createCollectionInDB(name string, schema []SchemaField) 
 	}
 
 	res, err := env.DBConn.Exec("INSERT INTO _collections (name, created, updated) VALUES (?, ?, ?)",
-		name, time.Now().Format("2006-01-02 15:04:05"), time.Now().Format("2006-01-02 15:04:05"))
+		name, time.Now().Unix(), time.Now().Unix())
 	if err != nil {
 		return err
 	}
 	collectionID, _ := res.LastInsertId()
 
-	sqlFields := []string{"id INTEGER PRIMARY KEY AUTOINCREMENT", "created TEXT", "updated TEXT"}
+	sqlFields := []string{"id INTEGER PRIMARY KEY AUTOINCREMENT", "created INTEGER", "updated INTEGER"}
 	for i, field := range schema {
 		sqlType := "TEXT"
 		switch field.Type {
@@ -690,7 +690,7 @@ func (env *Environment) updateCollectionInDB(name string, schema []SchemaField) 
 		}
 	}
 
-	env.DBConn.Exec("UPDATE _collections SET updated = ? WHERE id = ?", time.Now().Format("2006-01-02 15:04:05"), collectionID)
+	env.DBConn.Exec("UPDATE _collections SET updated = ? WHERE id = ?", time.Now().Unix(), collectionID)
 	env.SchemaCache.Delete(name)
 	return nil
 }
@@ -1018,12 +1018,17 @@ func (env *Environment) handleStagingSync(w http.ResponseWriter, r *http.Request
 		rows, err := sourceEnv.DBConn.Query("SELECT name, schedule, schedule_meta, script_path, active, created FROM _cron_jobs")
 		if err == nil {
 			for rows.Next() {
-				var name, schedule, scriptPath, created string
+				var name, schedule, scriptPath string
 				var active int
 				var scheduleMeta sql.NullString
-				rows.Scan(&name, &schedule, &scheduleMeta, &scriptPath, &active, &created)
+				var createdRaw any
+				rows.Scan(&name, &schedule, &scheduleMeta, &scriptPath, &active, &createdRaw)
 				if req.Direction == "prod_to_staging" {
 					active = 0
+				}
+				var created any = createdRaw
+				if b, ok := createdRaw.([]byte); ok {
+					created = string(b)
 				}
 				targetEnv.DBConn.Exec("INSERT INTO _cron_jobs (name, schedule, schedule_meta, script_path, active, created) VALUES (?, ?, ?, ?, ?, ?)",
 					name, schedule, scheduleMeta, scriptPath, active, created)
@@ -1140,8 +1145,15 @@ func (env *Environment) handleAdminKeys(w http.ResponseWriter, r *http.Request) 
 		results := []map[string]any{}
 		for rows.Next() {
 			var id int
-			var name, key, perms, created string
-			rows.Scan(&id, &name, &key, &perms, &created)
+			var name, key, perms string
+			var createdRaw any
+			rows.Scan(&id, &name, &key, &perms, &createdRaw)
+			
+			var created any = createdRaw
+			if b, ok := createdRaw.([]byte); ok {
+				created = string(b)
+			}
+			
 			var pMap map[string]any
 			json.Unmarshal([]byte(perms), &pMap)
 			results = append(results, map[string]any{"id": id, "name": name, "key": key, "permissions": pMap, "created": created})
@@ -1173,7 +1185,7 @@ func (env *Environment) handleAdminKeys(w http.ResponseWriter, r *http.Request) 
 		crand.Read(b)
 		newKey := "sk_" + hex.EncodeToString(b)
 		env.DBConn.Exec("INSERT INTO _api_keys (key, name, permissions, created) VALUES (?, ?, ?, ?)",
-			newKey, req.Name, permsStr, time.Now().Format("2006-01-02 15:04:05"))
+			newKey, req.Name, permsStr, time.Now().Unix())
 
 		w.Write([]byte(`{"success":true, "key":"` + newKey + `"}`))
 		return
@@ -1199,8 +1211,15 @@ func (env *Environment) handleAdminCrons(w http.ResponseWriter, r *http.Request)
 		for rows.Next() {
 			var id, active int
 			var scheduleMeta sql.NullString
-			var name, schedule, scriptPath, created string
-			rows.Scan(&id, &name, &schedule, &scheduleMeta, &scriptPath, &active, &created)
+			var name, schedule, scriptPath string
+			var createdRaw any
+			rows.Scan(&id, &name, &schedule, &scheduleMeta, &scriptPath, &active, &createdRaw)
+
+			var created any = createdRaw
+			if b, ok := createdRaw.([]byte); ok {
+				created = string(b)
+			}
+
 			results = append(results, map[string]any{
 				"id":            id,
 				"name":          name,
@@ -1234,7 +1253,7 @@ func (env *Environment) handleAdminCrons(w http.ResponseWriter, r *http.Request)
 				req.Name, req.Schedule, req.ScheduleMeta, req.ScriptPath, activeInt, req.ID)
 		} else {
 			env.DBConn.Exec("INSERT INTO _cron_jobs (name, schedule, schedule_meta, script_path, active, created) VALUES (?, ?, ?, ?, ?, ?)",
-				req.Name, req.Schedule, req.ScheduleMeta, req.ScriptPath, activeInt, time.Now().Format("2006-01-02 15:04:05"))
+				req.Name, req.Schedule, req.ScheduleMeta, req.ScriptPath, activeInt, time.Now().Unix())
 		}
 		env.initCron()
 		w.Write([]byte(`{"success":true}`))
@@ -1375,10 +1394,10 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 			json.NewDecoder(r.Body).Decode(&data)
 			cols, placeholders, args := []string{}, []string{}, []any{}
 			if _, ok := data["created"]; !ok {
-				data["created"] = time.Now().Format("2006-01-02 15:04:05")
+				data["created"] = time.Now().Unix()
 			}
 			if _, ok := data["updated"]; !ok {
-				data["updated"] = time.Now().Format("2006-01-02 15:04:05")
+				data["updated"] = time.Now().Unix()
 			}
 			for k, v := range data {
 				cols = append(cols, k)
@@ -1454,7 +1473,7 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 			}
 			var data map[string]any
 			json.NewDecoder(r.Body).Decode(&data)
-			data["updated"] = time.Now().Format("2006-01-02 15:04:05")
+			data["updated"] = time.Now().Unix()
 
 			cols, args := []string{}, []any{}
 			for k, v := range data {
@@ -1842,7 +1861,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 				return 2
 			}
 
-			now := time.Now().Format("2006-01-02 15:04:05")
+			now := time.Now().Unix()
 			if _, exists := data["created"]; !exists {
 				data["created"] = now
 			}
@@ -1879,7 +1898,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 			queryMap, _ := luaValueToInterface(L.OptTable(2, L.NewTable())).(map[string]any)
 			updateMap, _ := luaValueToInterface(L.OptTable(3, L.NewTable())).(map[string]any)
 
-			updateMap["updated"] = time.Now().Format("2006-01-02 15:04:05")
+			updateMap["updated"] = time.Now().Unix()
 
 			whereVals, whereCols := []any{}, []string{"1=1"}
 			for k, v := range queryMap {

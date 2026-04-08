@@ -573,7 +573,7 @@ let state = {
     }
 
     function renderCollectionTable() {
-      const cols =['id', ...state.schema.map(s => s.name)];
+      const cols =['id', ...state.schema.map(s => s.name), 'created', 'updated'];
       document.getElementById('pane-header').innerHTML = `
       <h2>${state.sub}</h2>
       <div class="hbox">
@@ -592,6 +592,14 @@ let state = {
         <td onclick="event.stopPropagation()"><input type="checkbox" onchange="toggleSelect('${d.id}', this.checked)" ${state.selected.has(String(d.id)) ? 'checked' : ''}></td>
         ${cols.map(c => {
         let val = d[c];
+        if (c === 'created' || c === 'updated') {
+          if (val) {
+            let numVal = Number(val);
+            let ms = numVal > 1e11 ? numVal : numVal * 1000;
+            return `<td>${new Date(ms).toLocaleString()}</td>`;
+          }
+          return `<td></td>`;
+        }
         let sc = state.schema.find(s => s.name === c);
         if (sc && sc.type === 'bool') {
           return `<td>${(val === true || val === 1 || val === 'true') ? 'true' : 'false'}</td>`;
@@ -680,6 +688,13 @@ let state = {
           html += `<div class="form-field"><input type="text" id="f_${f.name}" value="${val}" placeholder=" "><label>${f.name}</label></div>`;
         }
       });
+
+      if (id) {
+        let cVal = item['created'] !== undefined && item['created'] !== null ? item['created'] : '';
+        let uVal = item['updated'] !== undefined && item['updated'] !== null ? item['updated'] : '';
+        html += `<div class="form-field"><input type="text" value="${cVal}" readonly placeholder=" "><label>created</label></div>`;
+        html += `<div class="form-field"><input type="text" value="${uVal}" readonly placeholder=" "><label>updated</label></div>`;
+      }
 
       document.getElementById('modal-title').innerText = `${id ? 'Edit' : 'New'} Item`;
       document.getElementById('modal-body').innerHTML = html + `<div class="hbox"><button id="modal-confirm-btn" class="btn" onclick="saveItem(${id})">Save</button> <button class="btn danger" onclick="closeModal()">Cancel</button></div>`;
