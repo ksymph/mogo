@@ -13,8 +13,8 @@
   --bg-3: #e7ecf3;
   --bg-2: #f8fafc;
   --bg-4: #ccd7e5;
-  --accent: #3b82f6;
-  --accent-hover: #2563eb;
+  --accent: #a866f1;
+  --accent-hover: #844ac6;
   --danger: #ef4444;
   --danger-hover: #dc2626;
   --muted: #64748b;
@@ -31,8 +31,8 @@
   --bg-3: #334155;
   --bg-2: #1e293b;
   --bg-4: #475572;
-  --accent: #60a5fa;
-  --accent-hover: #3b82f6;
+  --accent: #9b6af4;
+  --accent-hover: #863bf6;
   --danger: #f87171;
   --danger-hover: #ef4444;
   --muted: #94a3b8;
@@ -81,6 +81,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        color: inherit;
 
         &:hover {
           background-color: var(--bg-4);
@@ -172,6 +173,13 @@
         align-items: center;
         gap: 0.5rem;
       }
+    }
+    
+    input[type="radio"],
+    input[type="checkbox"],
+    input[type="range"],
+    progress {
+      accent-color: var(--accent);
     }
 
 

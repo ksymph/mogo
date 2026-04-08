@@ -48,30 +48,30 @@
         OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
         SOFTWARE.
       -->
-      <div class="icon-btn" id="nav-keys-btn" onclick="nav('keys')" title="API Keys">
+      <a href="?tab=keys" class="icon-btn" id="nav-keys-btn" onclick="handleNavClick(event, 'keys')" title="API Keys">
         <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path
             d="M10 12C10 14.2091 8.20914 16 6 16C3.79086 16 2 14.2091 2 12C2 9.79086 3.79086 8 6 8C8.20914 8 10 9.79086 10 12ZM10 12H22V15"
             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
           <path d="M18 12V15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
-      </div>
-      <div class="icon-btn" onclick="nav('collections')" title="Collections">
+      </a>
+      <a href="?tab=collections" class="icon-btn" onclick="handleNavClick(event, 'collections')" title="Collections">
         <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M5 12V18C5 18 5 21 12 21C19 21 19 18 19 18V12" stroke="currentColor" stroke-width="2" />
           <path d="M5 6V12C5 12 5 15 12 15C19 15 19 12 19 12V6" stroke="currentColor" stroke-width="2" />
           <path d="M12 3C19 3 19 6 19 6C19 6 19 9 12 9C5 9 5 6 5 6C5 6 5 3 12 3Z" stroke="currentColor"
             stroke-width="2" />
         </svg>
-      </div>
-      <div class="icon-btn" onclick="nav('routes')" title="Routes">
+      </a>
+      <a href="?tab=routes" class="icon-btn" onclick="handleNavClick(event, 'routes')" title="Routes">
         <svg width="32px" height="32px" viewBox="0 0 24 24" stroke-width="1.5" fill="none"
           xmlns="http://www.w3.org/2000/svg">
           <path d="M22 10L8 10C0 10 0 21 8 21M22 10L15 3M22 10L15 17" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round" />
         </svg>
-      </div>
-      <div class="icon-btn" onclick="nav('public')" title="Public">
+      </a>
+      <a href="?tab=public" class="icon-btn" onclick="handleNavClick(event, 'public')" title="Public">
         <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M7 18H10.5H14" stroke="currentColor" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round" />
@@ -86,8 +86,8 @@
           <path d="M14 5V8.4C14 8.73137 14.2686 9 14.6 9H18" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round" />
         </svg>
-      </div>
-      <div class="icon-btn" onclick="nav('schedules')" title="Schedules">
+      </a>
+      <a href="?tab=schedules" class="icon-btn" onclick="handleNavClick(event, 'schedules')" title="Schedules">
         <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M12 6L12 12L18 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round" />
@@ -95,8 +95,8 @@
             d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z"
             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
-      </div>
-      <div class="icon-btn" onclick="nav('logs')" title="Logs">
+      </a>
+      <a href="?tab=logs" class="icon-btn" onclick="handleNavClick(event, 'logs')" title="Logs">
         <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
           stroke-linecap="round" stroke-linejoin="round">
           <line x1="8" y1="6" x2="21" y2="6"></line>
@@ -106,8 +106,8 @@
           <line x1="3" y1="12" x2="3.01" y2="12"></line>
           <line x1="3" y1="18" x2="3.01" y2="18"></line>
         </svg>
-      </div>
-      <div class="icon-btn" id="nav-settings-btn" onclick="nav('settings')" title="Settings">
+      </a>
+      <a href="?tab=settings" class="icon-btn" id="nav-settings-btn" onclick="handleNavClick(event, 'settings')" title="Settings">
         <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path
             d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z"
@@ -116,14 +116,14 @@
             d="M19.6224 10.3954L18.5247 7.7448L20 6L18 4L16.2647 5.48295L13.5578 4.36974L12.9353 2H10.981L10.3491 4.40113L7.70441 5.51596L6 4L4 6L5.45337 7.78885L4.3725 10.4463L2 11V13L4.40111 13.6555L5.51575 16.2997L4 18L6 20L7.79116 18.5403L10.397 19.6123L11 22H13L13.6045 19.6132L16.2551 18.5155C16.6969 18.8313 18 20 18 20L20 18L18.5159 16.2494L19.6139 13.598L21.9999 12.9772L22 11L19.6224 10.3954Z"
             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
-      </div>
-      <div class="icon-btn" id="nav-staging-btn" onclick="nav('staging')" title="Staging">
+      </a>
+      <a href="?tab=staging" class="icon-btn" id="nav-staging-btn" onclick="handleNavClick(event, 'staging')" title="Staging">
         <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M3 20.4V3.6C3 3.26863 3.26863 3 3.6 3H20.4C20.7314 3 21 3.26863 21 3.6V20.4C21 20.7314 20.7314 21 20.4 21H3.6C3.26863 21 3 20.7314 3 20.4Z"
           stroke="currentColor" stroke-width="2"></path>
           <path d="M6 18L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
           <path d="M12 14V6M12 6L15.5 9.5M12 6L8.5 9.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-      </div>
+      </a>
       <div id="staging-label" style="display:none; writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; font-weight: bold; flex-grow: 1; align-items: center; justify-content: center; letter-spacing: 4px; color: var(--accent); font-size: 1.2rem; opacity: 0.8; user-select: none;">STAGING</div>
     </div>
 
@@ -199,13 +199,42 @@
       }
     });
     
-let state = {
+  let state = {
     tab: '', sub: '', data: [], schema:[], selected: new Set(),
     collections: [], keys: [], crons:[], settings: null,
     environment: 'production',
     sort: { col: 'id', asc: true },
     openFolders: {}
   };
+
+  window.fileEditorCache = {}; // Tracks the last opened file per section: base -> { path, element, editor, originalContent }
+  window.activeEditor = null;  // Pointer to the currently active editor instance
+
+  // Intercept Navigation logic for Single Page App architecture and Warn if Unsaved changes
+  window.handleNavClick = function(e, tab) {
+      if (e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+          e.preventDefault();
+          
+          // Warn only when navigating to a DIFFERENT main sidebar section
+          if (window.activeEditor) {
+              let cache = window.activeEditor;
+              if (cache.editor.value !== cache.originalContent) {
+                  if (!confirm("You have unsaved changes in the active file. Are you sure you want to navigate away?")) {
+                      return;
+                  }
+              }
+          }
+
+          nav(tab);
+          window.history.pushState({}, '', '?tab=' + tab);
+      }
+  };
+
+  window.addEventListener('popstate', (e) => {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab') || 'collections';
+      nav(tab);
+  });
 
   // Listen for native <details> toggle events to save open/closed states
   document.addEventListener('toggle', (e) => {
@@ -508,20 +537,27 @@ let state = {
         document.getElementById('staging-label').style.display = 'flex';
       } else {
         document.getElementById('nav-keys-btn').style.display = 'flex';
-        document.getElementById('nav-staging-btn').style.display = 'flex';
+        document.getElementById('nav-staging-btn').style.display = (state.settings && state.settings.staging_enabled) ? 'flex' : 'none';
         document.getElementById('nav-settings-btn').style.display = 'flex';
         document.getElementById('staging-label').style.display = 'none';
       }
 
-      nav('collections'); 
+      const params = new URLSearchParams(window.location.search);
+      const initialTab = params.get('tab') || 'collections';
+      nav(initialTab); 
     }
 
     function nav(tab) {
+      if (window.activeEditor && window.activeEditor.element && window.activeEditor.element.parentNode) {
+          window.activeEditor.element.parentNode.removeChild(window.activeEditor.element);
+      }
+      window.activeEditor = null; // Leaving the current view
+
       state.tab = tab; state.sub = ''; state.search = '';
       state.sort = { col: 'id', asc: true };
       document.querySelectorAll('.icon-btn').forEach(e => e.classList.remove('active'));
 
-      let iconBtn = document.querySelector(`.icon-btn[onclick="nav('${tab}')"]`);
+      let iconBtn = document.querySelector(`.icon-btn[href="?tab=${tab}"]`);
       if (iconBtn) iconBtn.classList.add('active');
 
       document.getElementById('sub-sidebar').style.display =['collections', 'routes', 'public', 'schedules', 'settings'].includes(tab) ? 'flex' : 'none';
@@ -602,6 +638,7 @@ let state = {
         }
         let sc = state.schema.find(s => s.name === c);
         if (sc && sc.type === 'bool') {
+          if (val === undefined || val === null || val === '') return `<td></td>`;
           return `<td>${(val === true || val === 1 || val === 'true') ? 'true' : 'false'}</td>`;
         }
         return `<td>${val !== undefined && val !== null ? val : ''}</td>`;
@@ -846,6 +883,9 @@ let state = {
       <div class="form-block">
               <label class="form-check"><span>Production Environment</span><input type="checkbox" id="pk_production" checked></label>
               <label class="form-check"><span>Staging Environment</span><input type="checkbox" id="pk_staging" checked></label>
+      </div>
+              <hr>
+      <div class="form-block">
               <label class="form-check"><span>Routes</span><input type="checkbox" id="pk_routes"></label>
               <label class="form-check"><span>Schedules</span><input type="checkbox" id="pk_schedules"></label>
               <label class="form-check"><span>Public</span><input type="checkbox" id="pk_public"></label>
@@ -1132,6 +1172,11 @@ async function loadSettings(sub = 'admin') {
       };
       await api('/settings', { method: 'POST', body: payload });
       state.settings = payload;
+      
+      if (state.environment !== 'staging') {
+          document.getElementById('nav-staging-btn').style.display = payload.staging_enabled ? 'flex' : 'none';
+      }
+      
       document.getElementById('btn-save-settings').disabled = true;
     }
 
@@ -1226,6 +1271,7 @@ async function loadSettings(sub = 'admin') {
           let val = itm[c];
           let sc = schema.find(s => s.name === c);
           if (sc && sc.type === 'bool') {
+            if (val === undefined || val === null || val === '') return `<td></td>`;
             return `<td>${(val === true || val === 1 || val === 'true') ? 'true' : 'false'}</td>`;
           }
           return `<td>${val !== undefined && val !== null ? val : ''}</td>`;
@@ -1331,6 +1377,7 @@ async function loadSettings(sub = 'admin') {
       }
 
       // Bind File Tree Drag & Drop interactions for File Uploads
+      // Bind File Tree Drag & Drop interactions for File Uploads
       setTimeout(() => {
         const fileTree = document.querySelector('.file-tree');
         if (fileTree && !fileTree.dataset.dndBound) {
@@ -1359,7 +1406,6 @@ async function loadSettings(sub = 'admin') {
             
             if (target) {
               path = target.getAttribute('data-path') || '';
-              // If dropping onto an exact file (li element), we resolve its parent folder.
               if (target.tagName.toLowerCase() === 'li') {
                 let lastSlash = path.lastIndexOf('/');
                 path = lastSlash >= 0 ? path.substring(0, lastSlash) : '';
@@ -1371,79 +1417,129 @@ async function loadSettings(sub = 'admin') {
         }
       }, 0);
 
-      if (base === 'schedules') loadCronJobs();
+      // Auto-open last cached file or default view
+      if (base === 'schedules') {
+          if (window.fileEditorCache[base]) {
+              editFile(base, window.fileEditorCache[base].path);
+          } else {
+              loadCronJobs();
+          }
+      } else {
+          if (window.fileEditorCache[base]) {
+              editFile(base, window.fileEditorCache[base].path);
+          }
+      }
     }
 
     const extMap = { 'js': 'javascript', 'ts': 'typescript', 'py': 'python', 'sh': 'bash', 'md': 'markdown' };
 
 async function editFile(base, path) {
-      document.querySelectorAll('.sub-sidebar .sub-item, .sub-sidebar .tree-item').forEach(el => el.classList.remove('active'));
-      let activeItem = document.querySelector(`.sub-sidebar .tree-item[data-path="${esc(path)}"]`);
-      if (activeItem) activeItem.classList.add('active');
-
-      let apiBtnHtml = '';
-      if (path.endsWith('.lua')) {
-        apiBtnHtml = `<button class="btn secondary" onclick="showApiDocs()">Lua API Reference</button> `;
-      }
-
-      document.getElementById('pane-header').innerHTML = `
-      <h2 style="font-family: monospace;">${base}/${path}</h2>
-      <div>${apiBtnHtml}<button id="btn-save-file" class="btn" disabled onclick="saveFile('${base}', '${esc(path)}')" title="Ctrl+S">Save changes</button></div>
-    `;
-      if (path.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        document.getElementById('pane-content').innerHTML = `<img src="/api/files?base=${base}&path=${path}&raw=true" style="max-width:100%;max-height:80vh">`;
-      } else {
-        const res = await api(`/files?base=${base}&path=${path}`);
-        
-        // Store the baseline content to compare against
-        state.currentFileContent = res.content; 
-        
-        let ext = path.split('.').pop().toLowerCase();
-        ext = extMap[ext] || ext;
-
-        document.getElementById('pane-content').innerHTML = `
-          <div id="file-editor" style="height:calc(100% - 1rem); width:100%;"></div>`;
-
-        if (window.editor) window.editor.remove();
-
-        let edTheme = localStorage.getItem('mogo_editor_theme') || 'auto';
-        let edTabSize = parseInt(localStorage.getItem('mogo_editor_tabSize') || '3', 10);
-        let edInsertSpaces = localStorage.getItem('mogo_editor_insertSpaces') === 'true';
-        let edWordWrap = localStorage.getItem('mogo_editor_wordWrap') !== 'false';
-        
-        let adminTheme = localStorage.getItem('mogo_theme') || 'auto';
-        if (adminTheme === 'auto') {
-          adminTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    // If opening a new file within the same section, warn if the active file is unsaved
+    if (window.activeEditor && window.activeEditor.path !== path) {
+        if (window.activeEditor.editor && window.activeEditor.editor.value !== window.activeEditor.originalContent) {
+            if (!confirm("You have unsaved changes in the current file. Discard them?")) return;
         }
-        
-        let isDark = edTheme === 'dark' || (edTheme === 'auto' && adminTheme === 'dark');
-
-        window.editor = createEditor('#file-editor', {
-          language: ext,
-          value: res.content,
-          tabSize: edTabSize,
-          insertSpaces: edInsertSpaces,
-          wordWrap: edWordWrap,
-          onUpdate(code) {
-            const btn = document.getElementById('btn-save-file');
-            if (btn) {
-              // Only enable the save button if the content actually changed
-              if (code !== state.currentFileContent) {
-                btn.disabled = false;
-              } else {
-                btn.disabled = true;
-              }
-            }
-          }
-        });
-
-        if (isDark) {
-          document.getElementById('file-editor').classList.add('editor-dark');
-        }
-      }
     }
 
-    function showApiDocs() {
+    if (window.activeEditor && window.activeEditor.element && window.activeEditor.element.parentNode) {
+        window.activeEditor.element.parentNode.removeChild(window.activeEditor.element);
+    }
+    window.activeEditor = null; // Clear the active editor so async/sync event handlers don't use stale data
+    
+    document.querySelectorAll('.sub-sidebar .sub-item, .sub-sidebar .tree-item').forEach(el => el.classList.remove('active'));
+    let activeItem = document.querySelector(`.sub-sidebar .tree-item[data-path="${esc(path)}"]`);
+    if (activeItem) activeItem.classList.add('active');
+
+    let apiBtnHtml = '';
+    if (path.endsWith('.lua')) {
+        apiBtnHtml = `<button class="btn secondary" onclick="showApiDocs()">Lua API Reference</button> `;
+    }
+
+    document.getElementById('pane-header').innerHTML = `
+        <h2 style="font-family: monospace;">${base}/${path}</h2>
+        <div>${apiBtnHtml}<button id="btn-save-file" class="btn" disabled onclick="saveFile('${base}', '${esc(path)}')" title="Ctrl+S">Save changes</button></div>
+    `;
+
+    if (path.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+        document.getElementById('pane-content').innerHTML = `<img src="/api/files?base=${base}&path=${path}&raw=true" style="max-width:100%;max-height:80vh">`;
+        return;
+    }
+    
+    document.getElementById('pane-content').innerHTML = ''; // Clear non-editor content
+
+    // We are returning to the last file left open in this section, restore from cache
+    if (window.fileEditorCache[base] && window.fileEditorCache[base].path === path) {
+        let cache = window.fileEditorCache[base];
+        document.getElementById('pane-content').appendChild(cache.element);
+        window.activeEditor = cache;
+        window.editor = cache.editor; // restore globally
+        
+        const btn = document.getElementById('btn-save-file');
+        if (btn) btn.disabled = (cache.editor.value === cache.originalContent);
+        return;
+    }
+
+    // Otherwise, fetch and instantiate a new editor
+    const res = await api(`/files?base=${base}&path=${path}`);
+    
+    // Normalize line endings to avoid false positive change detections
+    let normalizedContent = (res.content || '').replace(/\r\n/g, '\n');
+    
+    let ext = path.split('.').pop().toLowerCase();
+    ext = extMap[ext] || ext;
+
+    let wrapperId = "editor-" + Date.now() + Math.floor(Math.random()*1000);
+    let editorWrapper = document.createElement('div');
+    editorWrapper.id = wrapperId;
+    editorWrapper.style = "height:calc(100% - 1rem); width:100%;";
+    document.getElementById('pane-content').appendChild(editorWrapper);
+
+    let edTheme = localStorage.getItem('mogo_editor_theme') || 'auto';
+    let edTabSize = parseInt(localStorage.getItem('mogo_editor_tabSize') || '3', 10);
+    let edInsertSpaces = localStorage.getItem('mogo_editor_insertSpaces') === 'true';
+    let edWordWrap = localStorage.getItem('mogo_editor_wordWrap') !== 'false';
+    
+    let adminTheme = localStorage.getItem('mogo_theme') || 'auto';
+    if (adminTheme === 'auto') {
+        adminTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    
+    let isDark = edTheme === 'dark' || (edTheme === 'auto' && adminTheme === 'dark');
+
+    // Pre-initialize activeEditor so the sync onUpdate event captures the correct originalContent immediately
+    window.activeEditor = {
+        base: base,
+        path: path,
+        element: editorWrapper,
+        editor: null,
+        originalContent: normalizedContent
+    };
+
+    window.editor = createEditor('#' + wrapperId, {
+        language: ext,
+        value: normalizedContent,
+        tabSize: edTabSize,
+        insertSpaces: edInsertSpaces,
+        wordWrap: edWordWrap,
+        onUpdate(code) {
+            const btn = document.getElementById('btn-save-file');
+            if (btn && window.activeEditor) {
+                btn.disabled = (code === window.activeEditor.originalContent);
+            }
+        }
+    });
+    
+    window.activeEditor.editor = window.editor;
+
+    if (isDark) {
+        editorWrapper.classList.add('editor-dark');
+    }
+    
+    // Save to cache for this specific section (base)
+    window.fileEditorCache[base] = window.activeEditor;
+}
+
+function showApiDocs() {
       document.getElementById('modal-title').innerText = "Lua API Reference";
       document.getElementById('modal-body').innerHTML = `
 <div id="api-ref">
@@ -1514,25 +1610,44 @@ async function editFile(base, path) {
 
 
     async function saveFile(base, path) {
-      let content = window.editor ? window.editor.value : document.getElementById('file-editor').value;
-      let btn = document.getElementById('btn-save-file');
-      btn.innerText = "Saving...";
-      
-      await api(`/files?base=${base}`, { method: 'POST', body: { path: path, content: content, is_dir: false } });
-      
-      // Update baseline content to the newly saved state
-      state.currentFileContent = content; 
-      
-      btn.disabled = true;
-      btn.innerText = "Save changes";
+    let content = window.editor ? window.editor.value : document.getElementById('file-editor').value;
+    let btn = document.getElementById('btn-save-file');
+    btn.innerText = "Saving...";
+    btn.disabled = true;
+    
+    try {
+        await api(`/files?base=${base}`, { method: 'POST', body: { path: path, content: content, is_dir: false } });
+        
+        if (window.activeEditor) window.activeEditor.originalContent = content;
+        if (window.fileEditorCache[base] && window.fileEditorCache[base].path === path) {
+            window.fileEditorCache[base].originalContent = content;
+        }
+        btn.innerText = "Save changes";
+    } catch (err) {
+        alert("Failed to save: " + err.message);
+        btn.innerText = "Save changes";
+        btn.disabled = false;
     }
+}
 
-    async function deleteFile(base, path) {
-      if (confirm('Delete?')) {
+async function deleteFile(base, path) {
+    if (confirm('Delete?')) {
         await api(`/files?base=${base}&path=${path}`, { method: 'DELETE' });
+        
+        // Ensure cache is destroyed if we delete the file we are currently tracking
+        if (window.fileEditorCache[base] && window.fileEditorCache[base].path === path) {
+            if (window.activeEditor && window.activeEditor.path === path) {
+                if (window.activeEditor.element && window.activeEditor.element.parentNode) {
+                    window.activeEditor.element.parentNode.removeChild(window.activeEditor.element);
+                }
+                window.activeEditor = null;
+            }
+            delete window.fileEditorCache[base];
+        }
+        
         loadFiles(base);
-      }
     }
+}
     
     window.uploadFiles = async function(base, targetFolder, files) {
       const formData = new FormData();
@@ -1637,6 +1752,11 @@ async function editFile(base, path) {
 
     // ---------- cron jobs ----------
     async function loadCronJobs() {
+      if (window.activeEditor && window.activeEditor.element && window.activeEditor.element.parentNode) {
+          window.activeEditor.element.parentNode.removeChild(window.activeEditor.element);
+      }
+      window.activeEditor = null;
+
       document.querySelectorAll('.sub-sidebar .sub-item, .sub-sidebar .tree-item').forEach(el => el.classList.remove('active'));
       let btn = document.getElementById('edit-schedules-btn');
       if (btn) btn.classList.add('active');
@@ -1644,7 +1764,7 @@ async function editFile(base, path) {
       document.getElementById('pane-header').innerHTML = `<h2>Schedules</h2><button class="btn" onclick="cronModal()">+ New Schedule</button>`;
       state.crons = await api('/crons');
       renderCronsTable();
-    }
+  }
 
     function renderCronsTable() {
       let sorted = sortData([...state.crons]);
