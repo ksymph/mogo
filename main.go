@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"net"
 
 	"github.com/go-co-op/gocron/v2"
 	lua "github.com/yuin/gopher-lua"
@@ -736,11 +737,14 @@ func setAuthCookie(w http.ResponseWriter, key string) {
 }
 
 func getIP(r *http.Request) string {
-	ip := strings.Split(r.RemoteAddr, ":")[0]
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		ip = strings.Split(fwd, ",")[0]
-	}
-	return strings.TrimSpace(ip)
+    ip, _, err := net.SplitHostPort(r.RemoteAddr)
+    if err != nil {
+        ip = r.RemoteAddr
+    }
+    if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+        ip = strings.Split(fwd, ",")[0]
+    }
+    return strings.TrimSpace(ip)
 }
 
 func adminLockoutMiddleware(next http.HandlerFunc) http.HandlerFunc {
