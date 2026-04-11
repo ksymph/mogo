@@ -448,7 +448,7 @@ func (env *Environment) initCron() {
 	env.Scheduler.Start()
 }
 
-func (env *Environment) runCronScript(scriptPath string) {
+func (env *Environment) runCronScript(scriptPath string) error {
 	L := env.LuaPool.Get().(*lua.LState)
 	defer env.LuaPool.Put(L)
 	top := L.GetTop()
@@ -462,7 +462,7 @@ func (env *Environment) runCronScript(scriptPath string) {
 	fn, err := L.LoadFile(scriptPath)
 	if err != nil {
 		log.Printf("Cron error loading %s: %v", scriptPath, err)
-		return
+		return err
 	}
 
 	luaEnv := L.NewTable()
@@ -474,7 +474,10 @@ func (env *Environment) runCronScript(scriptPath string) {
 	L.Push(fn)
 	if err := L.PCall(0, 0, nil); err != nil {
 		log.Printf("Cron error running %s: %v", scriptPath, err)
+		return err
 	}
+	
+	return nil
 }
 
 func createBackup(destDir string, full bool) error {
@@ -1336,6 +1339,53 @@ func (env *Environment) handleAdminCrons(w http.ResponseWriter, r *http.Request)
 		w.Write([]byte(`{"success":true}`))
 		return
 	}
+}
+
+func (env *Environment) handleAdminSchedulesRun(w http.ResponseWriter, r *http.Request) {
+	if !hasPermission(r, "schedules") {
+		http.Error(w, "Forbidden", 403)
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "Method Not Allowed", 405)
+		return
+	}
+
+	var req struct {
+		ScriptPath string `json:"script_path"`
+		Repeat     int    `json:"repeat"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+
+	// Traversal protection
+	if strings.Contains(req.ScriptPath, "..") {
+		http.Error(w, "Invalid script path", 400)
+		return
+	}
+
+	if req.Repeat <= 0 {
+		req.Repeat = 1
+	}
+
+	fullPath := filepath.Join(env.ScriptsPath, req.ScriptPath)
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		http.Error(w, "Script not found", 404)
+		return
+	}
+
+	// Execute sequence and fail gracefully on Lua errors
+	for i := 0; i < req.Repeat; i++ {
+		if err := env.runCronScript(fullPath); err != nil {
+			http.Error(w, fmt.Sprintf("Execution error on iteration %d: %v", i+1, err), 500)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"success":true}`))
 }
 
 func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) {
@@ -2792,6 +2842,7 @@ func startServer(env *Environment, port int) {
 	mux.HandleFunc("/api/logs", env.adminMiddleware(env.handleAdminLogs))
 
 	mux.HandleFunc("/api/crons", env.adminMiddleware(env.handleAdminCrons))
+	mux.HandleFunc("/api/schedules/run", env.adminMiddleware(env.handleAdminSchedulesRun))
 	mux.HandleFunc("/api/collections", env.adminMiddleware(env.handleAdminData))
 	mux.HandleFunc("/api/collections/", env.adminMiddleware(env.handleAdminData))
 	mux.HandleFunc("/api/files", env.adminMiddleware(env.handleAdminFiles))

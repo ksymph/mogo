@@ -1395,7 +1395,7 @@ async function loadSettings(sub = 'admin') {
 
       function buildHtml(node, prefix = "") {
         let html = "";
-        const renameIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path stroke-linecap="round" stroke-linejoin="round" d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+        const renameIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16M8 4h8M8 20h8"/></svg>`;
         
         for (let k in node) {
           let path = prefix ? prefix + "/" + k : k;
@@ -1851,10 +1851,64 @@ async function deleteFile(base, path) {
       let btn = document.getElementById('edit-schedules-btn');
       if (btn) btn.classList.add('active');
 
-      document.getElementById('pane-header').innerHTML = `<h2>Schedules</h2><button class="btn" onclick="cronModal()">+ New Schedule</button>`;
+      document.getElementById('pane-header').innerHTML = `
+        <h2>Schedules</h2>
+        <div class="hbox" style="gap: 8px;">
+          <button class="btn secondary" onclick="runScriptModal()">Run Script</button>
+          <button class="btn" onclick="cronModal()">+ New Schedule</button>
+        </div>
+      `;
       state.crons = await api('/crons');
       renderCronsTable();
-  }
+    }
+
+    async function runScriptModal() {
+      const files = await api('/files?base=schedules') || [];
+      const fileOptions = files.filter(f => !f.is_dir).map(f =>
+        `<option value="${f.path}">${f.path}</option>`
+      ).join('');
+
+      let html = `
+        <div class="form-field">
+          <select id="rs-script" style="width:100%; margin:0;">
+            <option value="" disabled selected>Select a script...</option>
+            ${fileOptions}
+          </select>
+          <label class="always-float">Lua Script Path</label>
+        </div>
+        <div class="form-field">
+          <input type="number" id="rs-repeat" min="1" value="1" placeholder=" ">
+          <label>Repeat (times)</label>
+        </div>
+        <div class="text-right mt-2" style="margin-top:1rem">
+          <button id="modal-confirm-btn" class="btn" onclick="runScript()">Run</button> 
+          <button class="btn danger" onclick="closeModal()">Cancel</button>
+        </div>
+      `;
+      openModal("Run Script", html);
+    }
+
+    async function runScript() {
+      const scriptPath = document.getElementById('rs-script').value;
+      const repeat = parseInt(document.getElementById('rs-repeat').value, 10) || 1;
+      
+      if (!scriptPath) return alert("Please select a script.");
+
+      let btn = document.getElementById('modal-confirm-btn');
+      btn.disabled = true;
+      btn.innerText = "Running...";
+
+      try {
+        await api('/schedules/run', { method: 'POST', body: { script_path: scriptPath, repeat: repeat } });
+        alert("Script executed successfully.");
+        closeModal();
+      } catch (e) {
+        alert("Script execution failed: " + e.message);
+      }
+      
+      btn.disabled = false;
+      btn.innerText = "Run";
+    }
 
     function renderCronsTable() {
       let sorted = sortData([...state.crons]);
