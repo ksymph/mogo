@@ -389,8 +389,9 @@ func (env *Environment) initCron() {
 			}
 
 			_, err := env.Scheduler.NewJob(
-				jobDef,
-				gocron.NewTask(func() { env.runCronScript(fullPath) }),
+				 jobDef,
+				 gocron.NewTask(func() { env.runCronScript(fullPath) }),
+				 gocron.WithTags(strconv.Itoa(id)),
 			)
 			if err != nil {
 				log.Printf("Failed to load cron job %d: %v", id, err)
@@ -1280,6 +1281,19 @@ func (env *Environment) handleAdminCrons(w http.ResponseWriter, r *http.Request)
 	if r.Method == "GET" {
 		rows, _ := env.DBConn.Query("SELECT id, name, schedule, schedule_meta, script_path, active, created FROM _cron_jobs ORDER BY id DESC")
 		defer rows.Close()
+		nextRuns := make(map[int]string)
+		if env.Scheduler != nil {
+			 for _, job := range env.Scheduler.Jobs() {
+				  tags := job.Tags()
+				  if len(tags) > 0 {
+				      if jID, err := strconv.Atoi(tags[0]); err == nil {
+				          if nr, err := job.NextRun(); err == nil {
+				              nextRuns[jID] = nr.Format(time.RFC3339)
+				          }
+				      }
+				  }
+			 }
+		}
 		results := []map[string]any{}
 		for rows.Next() {
 			var id, active int
@@ -1301,6 +1315,7 @@ func (env *Environment) handleAdminCrons(w http.ResponseWriter, r *http.Request)
 				"script_path":   scriptPath,
 				"active":        active == 1,
 				"created":       created,
+				"next_run":      nextRuns[id],
 			})
 		}
 		json.NewEncoder(w).Encode(results)

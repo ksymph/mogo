@@ -1918,7 +1918,7 @@ async function deleteFile(base, path) {
           try {
             let meta = JSON.parse(j.schedule_meta);
             if (meta.mode === 'interval') {
-              let parts =[];
+              let parts = [];
               if (meta.d) parts.push(meta.d + 'd');
               if (meta.h) parts.push(meta.h + 'h');
               if (meta.m) parts.push(meta.m + 'm');
@@ -1927,17 +1927,28 @@ async function deleteFile(base, path) {
             }
           } catch (e) { }
         }
+        
+        let nextRun = j.active 
+          ? (j.next_run ? new Date(j.next_run).toLocaleString() : 'Pending') 
+          : '<span style="color:var(--muted)">Disabled</span>';
+
         return `<tr onclick="cronModal(${j.id})">
-        <td>${j.name}</td><td>${schedText}</td><td>${j.script_path}</td><td>${j.active ? 'true' : 'false'}</td>
+        <td>${j.name}</td>
+        <td>${schedText}</td>
+        <td>${j.script_path}</td>
+        <td>${j.active ? 'true' : 'false'}</td>
+        <td>${nextRun}</td>
         <td style="text-align:right"><span class="clickable ml-2" onclick="event.stopPropagation(); deleteCron(${j.id})" title="Delete Job">✕</span></td>
       </tr>`;
       }).join('');
+      
       document.getElementById('pane-content').innerHTML = `
       <table class="data-table"><thead><tr>
         ${th('name', 'Name')}
         ${th('schedule', 'Schedule')}
         ${th('script_path', 'Script')}
         ${th('active', 'Active')}
+        ${th('next_run', 'Next Run')}
         <th></th>
       </tr></thead><tbody>${rows}</tbody></table>`;
     }
@@ -1955,14 +1966,14 @@ async function deleteFile(base, path) {
 
       if (id) {
         j = state.crons.find(x => x.id == id) || {};
-        if (j.active === false) mode = 'disabled';
-        else if (j.schedule_meta) {
+        if (j.schedule_meta) {
           try { meta = JSON.parse(j.schedule_meta); mode = meta.mode; } catch (e) { }
         } else {
           mode = 'raw';
         }
       }
-
+      
+      let isActive = id ? (j.active !== false) : true;
       let d = meta.d || '', h = meta.h || '', m = meta.m || '', s = meta.s || '';
 
       const files = await api('/files?base=schedules') ||[];
@@ -1977,7 +1988,6 @@ async function deleteFile(base, path) {
         <div style="display: flex; flex-direction: column; gap: 4px;">
           <label style="cursor:pointer; display:flex; align-items:center; gap:0.25rem;"><input type="radio" name="cron_mode" value="interval" ${mode === 'interval' ? 'checked' : ''} onchange="updateCronUI()"> Run every...</label>
           <label style="cursor:pointer; display:flex; align-items:center; gap:0.25rem;"><input type="radio" name="cron_mode" value="raw" ${mode === 'raw' ? 'checked' : ''} onchange="updateCronUI()"> Cron</label>
-          <label style="cursor:pointer; display:flex; align-items:center; gap:0.25rem;"><input type="radio" name="cron_mode" value="disabled" ${mode === 'disabled' ? 'checked' : ''} onchange="updateCronUI()"> Disabled</label>
         </div>
       </div>
 
@@ -2004,6 +2014,9 @@ async function deleteFile(base, path) {
         </select>
         <label class="always-float">Lua Script Path</label>
       </div>
+      <div class="form-check" style="margin-bottom: 1rem;">
+        <label><span>Active</span> <input type="checkbox" id="cj-active" ${isActive ? 'checked' : ''}></label>
+      </div>
 
       <div class="text-right mt-2" style="margin-top:1rem"><button id="modal-confirm-btn" class="btn" onclick="saveCron(${id})">Save</button> <button class="btn danger" onclick="closeModal()">Cancel</button></div>`;
       openModal(`${id ? 'Edit' : 'New'} Cron Job`, html);
@@ -2012,7 +2025,7 @@ async function deleteFile(base, path) {
     async function saveCron(id) {
       let mode = document.querySelector('input[name="cron_mode"]:checked').value;
       let schedule = document.getElementById('cj-sch')?.value || '0 * * * * *';
-      let active = (mode !== 'disabled');
+      let active = document.getElementById('cj-active').checked; // Changed line
       let meta = { mode: mode };
 
       if (mode === 'interval') {
