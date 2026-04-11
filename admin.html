@@ -1484,6 +1484,15 @@ async function editFile(base, path) {
         return;
     }
     
+    if (path.match(/\.(mp3|wav|ogg|flac|aac)$/i)) {
+        document.getElementById('pane-content').innerHTML = `
+          <div style="display:flex; justify-content:center; align-items:center; height:100%;">
+            <audio controls src="/api/files?base=${base}&path=${path}&raw=true" style="width: 80%; max-width: 600px;"></audio>
+          </div>
+        `;
+        return;
+    }
+    
     document.getElementById('pane-content').innerHTML = ''; // Clear non-editor content
 
     // We are returning to the last file left open in this section, restore from cache
