@@ -1319,6 +1319,64 @@ async function loadSettings(sub = 'admin') {
 
 
     // ---------- files & tree ----------
+    function renameModal(base, path) {
+      let parts = path.split('/');
+      let currentName = parts.pop();
+      let html = `
+        <div class="form-field">
+          <input id="rename-new-name" value="${currentName}" placeholder=" ">
+          <label>New Name</label>
+        </div>
+        <div class="hbox mt-2" style="margin-top:1rem">
+          <button id="modal-confirm-btn" class="btn" onclick="renameItem('${base}', '${esc(path)}')">Rename</button>
+          <button class="btn danger" onclick="closeModal()">Cancel</button>
+        </div>
+      `;
+      openModal("Rename File/Folder", html);
+    }
+
+    async function renameItem(base, oldPath) {
+      let newName = document.getElementById('rename-new-name').value.trim();
+      if (!newName) return;
+      
+      let parts = oldPath.split('/');
+      parts.pop();
+      parts.push(newName);
+      let newPath = parts.join('/');
+
+      if (oldPath === newPath) {
+         closeModal();
+         return;
+      }
+
+      let btn = document.getElementById('modal-confirm-btn');
+      btn.disabled = true;
+      btn.innerText = "Renaming...";
+
+      try {
+        await api(`/files/rename`, { method: 'POST', body: { base: base, old_path: oldPath, new_path: newPath } });
+        
+        // Evict matching/renamed files from the active editor cache
+        for (let b in window.fileEditorCache) {
+            if (b === base && window.fileEditorCache[b].path.startsWith(oldPath)) {
+                if (window.activeEditor && window.activeEditor.path === window.fileEditorCache[b].path) {
+                    window.activeEditor = null;
+                    document.getElementById('pane-content').innerHTML = '';
+                    document.getElementById('pane-header').innerHTML = '';
+                }
+                delete window.fileEditorCache[b];
+            }
+        }
+
+        closeModal();
+        loadFiles(base);
+      } catch (e) {
+        alert("Rename failed: " + e.message);
+        btn.disabled = false;
+        btn.innerText = "Rename";
+      }
+    }
+    
     async function loadFiles(base) {
       if (!state.openFolders[base]) state.openFolders[base] = new Set(['']); // Root open by default
       let folderName = base;
@@ -1337,27 +1395,31 @@ async function loadSettings(sub = 'admin') {
 
       function buildHtml(node, prefix = "") {
         let html = "";
+        const renameIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path stroke-linecap="round" stroke-linejoin="round" d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+        
         for (let k in node) {
           let path = prefix ? prefix + "/" + k : k;
           if (node[k] === null) {
             html += `<li class="tree-item" data-path="${esc(path)}" onclick="editFile('${base}', '${esc(path)}')">
             <span class="tree-label" title="${k}">📄 ${k}</span>
             <div class="tree-actions">
-              <span class="del" onclick="event.stopPropagation(); deleteFile('${base}', '${esc(path)}')" title="Delete File"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+              <span onclick="event.stopPropagation(); renameModal('${base}', '${esc(path)}')">${renameIcon}</span>
+              <span class="del" onclick="event.stopPropagation(); deleteFile('${base}', '${esc(path)}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
             </div>
           </li>`;
           } else {
-          let isOpen = state.openFolders[base].has(path) ? 'open' : '';
-          html += `<details ${isOpen}>
-            <summary class="tree-item" data-path="${esc(path)}">
-              <span class="tree-label folder-label" title="${k}">${k}</span>
-              <div class="tree-actions">
-                <span onclick="event.preventDefault(); newFileModal('${base}', '${esc(path)}')" title="New in Folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m-7-7h14"/></svg></span>
-                <span class="del" onclick="event.preventDefault(); deleteFile('${base}', '${esc(path)}')" title="Delete Folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
-              </div>
-            </summary>
-            <ul>${buildHtml(node[k], path)}</ul>
-          </details>`;
+            let isOpen = state.openFolders[base].has(path) ? 'open' : '';
+            html += `<details ${isOpen}>
+              <summary class="tree-item" data-path="${esc(path)}">
+                <span class="tree-label folder-label" title="${k}">${k}</span>
+                <div class="tree-actions">
+                  <span onclick="event.preventDefault(); newFileModal('${base}', '${esc(path)}')" title="New in Folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m-7-7h14"/></svg></span>
+                  <span onclick="event.preventDefault(); renameModal('${base}', '${esc(path)}')">${renameIcon}</span>
+                  <span class="del" onclick="event.preventDefault(); deleteFile('${base}', '${esc(path)}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+                </div>
+              </summary>
+              <ul>${buildHtml(node[k], path)}</ul>
+            </details>`;
           }
         }
         return html;

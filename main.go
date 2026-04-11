@@ -928,6 +928,72 @@ func (env *Environment) handleAuthCheck(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+func (env *Environment) handleAdminFilesRename(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method Not Allowed", 405)
+		return
+	}
+
+	var req struct {
+		Base    string `json:"base"`
+		OldPath string `json:"old_path"`
+		NewPath string `json:"new_path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+
+	baseDir := env.PublicPath
+	permKey := "public"
+
+	if req.Base == "routes" {
+		baseDir = env.RoutesPath
+		permKey = "routes"
+	} else if req.Base == "schedules" {
+		baseDir = env.ScriptsPath
+		permKey = "schedules"
+	}
+
+	if !hasPermission(r, permKey) {
+		http.Error(w, "Forbidden", 403)
+		return
+	}
+
+	// Security: Prevent directory traversal
+	if strings.Contains(req.OldPath, "..") || strings.Contains(req.NewPath, "..") {
+		http.Error(w, "Invalid path provided", 400)
+		return
+	}
+
+	oldFullPath := filepath.Join(baseDir, req.OldPath)
+	newFullPath := filepath.Join(baseDir, req.NewPath)
+
+	if _, err := os.Stat(oldFullPath); os.IsNotExist(err) {
+		http.Error(w, "Source file or directory not found", 404)
+		return
+	}
+
+	// Ensure the parent directory of the new destination path exists before moving
+	if err := os.MkdirAll(filepath.Dir(newFullPath), os.ModePerm); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create destination directories: %v", err), 500)
+		return
+	}
+
+	if err := os.Rename(oldFullPath, newFullPath); err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	// Re-init routes if modifying routing system directories
+	if req.Base == "routes" {
+		env.initRoutes()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"success":true}`))
+}
+
 func (env *Environment) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
 	if !hasPermission(r, "settings") {
 		http.Error(w, "Forbidden", 403)
@@ -2729,6 +2795,7 @@ func startServer(env *Environment, port int) {
 	mux.HandleFunc("/api/collections", env.adminMiddleware(env.handleAdminData))
 	mux.HandleFunc("/api/collections/", env.adminMiddleware(env.handleAdminData))
 	mux.HandleFunc("/api/files", env.adminMiddleware(env.handleAdminFiles))
+	mux.HandleFunc("/api/files/rename", env.adminMiddleware(env.handleAdminFilesRename))
 
 	mux.HandleFunc("/", env.corsAndRateLimitMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		cleanPath := filepath.Clean(filepath.FromSlash(r.URL.Path))
