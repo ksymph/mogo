@@ -589,6 +589,14 @@
         document.getElementById('pane-content').innerHTML = '<p style="padding:1.5rem">No collections found.</p>';
       }
     }
+    
+    async function deleteSingleItem(id) {
+      if (confirm("Are you sure you want to delete this item?")) {
+        await api(`/collections/${state.sub}?ids=${id}`, { method: 'DELETE' });
+        closeModal();
+        viewCollection(state.sub);
+      }
+    }
 
     async function viewCollection(name) {
       state.sub = name;
@@ -734,8 +742,18 @@
         html += `<div class="form-field"><input type="text" value="${uVal}" readonly placeholder=" "><label>updated</label></div>`;
       }
 
+      let idArg = id ? `'${id}'` : 'null';
+      let buttonsHtml = `<div class="hbox">
+        <button id="modal-confirm-btn" class="btn" onclick="saveItem(${idArg})">Save</button>`;
+      
+      if (id) {
+        buttonsHtml += `<button class="btn danger" style="background-color: var(--danger)" onclick="deleteSingleItem('${id}')">Delete</button>`;
+      }
+      
+      buttonsHtml += `<button class="btn danger" onclick="closeModal()">Cancel</button></div>`;
+
       document.getElementById('modal-title').innerText = `${id ? 'Edit' : 'New'} Item`;
-      document.getElementById('modal-body').innerHTML = html + `<div class="hbox"><button id="modal-confirm-btn" class="btn" onclick="saveItem(${id})">Save</button> <button class="btn danger" onclick="closeModal()">Cancel</button></div>`;
+      document.getElementById('modal-body').innerHTML = html + buttonsHtml;
       document.getElementById('modal').style.display = 'flex';
     }
 
