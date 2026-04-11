@@ -722,7 +722,8 @@
             
           `;
         } else {
-          html += `<div class="form-field"><input type="text" id="f_${f.name}" value="${val}" placeholder=" "><label>${f.name}</label></div>`;
+          let escapedVal = String(val).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+          html += `<div class="form-field"><textarea id="f_${f.name}" placeholder="">${escapedVal}</textarea><label>${f.name}</label></div>`;
         }
       });
 
