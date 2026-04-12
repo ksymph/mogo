@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"math"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -21,7 +22,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"net"
 
 	"github.com/go-co-op/gocron/v2"
 	lua "github.com/yuin/gopher-lua"
@@ -47,13 +47,14 @@ type Environment struct {
 	ScriptsPath string
 	UploadsPath string
 
-	DBConn      *sql.DB
-	LogDBConn   *sql.DB
-	SchemaCache sync.Map
-	Scheduler   gocron.Scheduler
-	LuaPool     *sync.Pool
-	Routes      []Route
-	RoutesMu    sync.RWMutex
+	ConfigDBConn *sql.DB
+	DataDBConn   *sql.DB
+	LogDBConn    *sql.DB
+	SchemaCache  sync.Map
+	Scheduler    gocron.Scheduler
+	LuaPool      *sync.Pool
+	Routes       []Route
+	RoutesMu     sync.RWMutex
 }
 
 func NewEnvironment(baseDir string, isStaging bool) *Environment {
@@ -77,11 +78,20 @@ func NewEnvironment(baseDir string, isStaging bool) *Environment {
 // -----------------------------------------------------------------------------
 // 0. SETTINGS & CONFIG
 // -----------------------------------------------------------------------------
+type ApiKey struct {
+	ID          int            `json:"id"`
+	Key         string         `json:"key"`
+	Name        string         `json:"name"`
+	Permissions map[string]any `json:"permissions"`
+	Created     int64          `json:"created"`
+}
+
 type Settings struct {
-	BackupDestDir   string `json:"backup_dest_dir"`
-	BackupFull      bool   `json:"backup_full"`
-	BackupSched     string `json:"backup_sched"`
-	BackupSchedMeta string `json:"backup_sched_meta"`
+	ApiKeys         []ApiKey `json:"api_keys"`
+	BackupDestDir   string   `json:"backup_dest_dir"`
+	BackupFull      bool     `json:"backup_full"`
+	BackupSched     string   `json:"backup_sched"`
+	BackupSchedMeta string   `json:"backup_sched_meta"`
 
 	AllowedOrigins  string  `json:"allowed_origins"`
 	RateLimitRPS    float64 `json:"rate_limit_rps"`
@@ -195,15 +205,23 @@ func recordAdminAttempt(ip string, success bool) {
 
 func (env *Environment) initDB() {
 	var err error
-	dbPath := filepath.Join(env.DataPath, "database.sqlite")
-	env.DBConn, err = sql.Open("sqlite", dbPath)
+	
+	configPath := filepath.Join(env.DataPath, "config.sqlite")
+	env.ConfigDBConn, err = sql.Open("sqlite", configPath)
 	if err != nil {
-		log.Fatalf("Failed to open SQLite database: %v", err)
+		log.Fatalf("Failed to open Config database: %v", err)
 	}
 	env.initSystemTables()
 	if !env.IsStaging {
 		env.initMasterKey()
 	}
+
+	dataPath := filepath.Join(env.DataPath, "data.sqlite")
+	env.DataDBConn, err = sql.Open("sqlite", dataPath)
+	if err != nil {
+		log.Fatalf("Failed to open Data database: %v", err)
+	}
+	env.bootstrapDataDB()
 
 	logDBPath := filepath.Join(env.DataPath, "log.sqlite")
 	env.LogDBConn, err = sql.Open("sqlite", logDBPath+"?_journal_mode=WAL")
@@ -220,6 +238,42 @@ func (env *Environment) initDB() {
 	)`)
 	if err != nil {
 		log.Printf("Error creating logs table: %v", err)
+	}
+}
+
+func (env *Environment) bootstrapDataDB() {
+	rows, err := env.ConfigDBConn.Query("SELECT name FROM _collections ORDER BY id ASC")
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	var collections []string
+	for rows.Next() {
+		var name string
+		rows.Scan(&name)
+		collections = append(collections, name)
+	}
+
+	for _, cName := range collections {
+		schema := env.getCollectionSchema(cName)
+
+		sqlFields := []string{"id INTEGER PRIMARY KEY AUTOINCREMENT", "created INTEGER", "updated INTEGER"}
+		for _, field := range schema {
+			sqlType := "TEXT"
+			switch field.Type {
+			case "number":
+				sqlType = "REAL"
+			case "bool":
+				sqlType = "BOOLEAN"
+			}
+			sqlFields = append(sqlFields, fmt.Sprintf("%s %s", field.Name, sqlType))
+		}
+		createSQL := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (%s)", cName, strings.Join(sqlFields, ", "))
+		_, err := env.DataDBConn.Exec(createSQL)
+		if err != nil {
+			log.Printf("Failed to bootstrap table %s: %v", cName, err)
+		}
 	}
 }
 
@@ -251,13 +305,6 @@ func (env *Environment) initSystemTables() {
 			position INTEGER DEFAULT 0,
 			FOREIGN KEY(collection_id) REFERENCES _collections(id) ON DELETE CASCADE
 		);`,
-		`CREATE TABLE IF NOT EXISTS _api_keys (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			key TEXT UNIQUE NOT NULL,
-			name TEXT NOT NULL,
-			permissions TEXT DEFAULT '{}',
-			created INTEGER
-		);`,
 		`CREATE TABLE IF NOT EXISTS _cron_jobs (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL,
@@ -269,26 +316,32 @@ func (env *Environment) initSystemTables() {
 		);`,
 	}
 	for _, q := range queries {
-		if _, err := env.DBConn.Exec(q); err != nil {
+		if _, err := env.ConfigDBConn.Exec(q); err != nil {
 			log.Fatalf("System Table Init Error: %v", err)
 		}
 	}
 
-	env.DBConn.Exec("ALTER TABLE _cron_jobs ADD COLUMN schedule_meta TEXT")
-	env.DBConn.Exec("ALTER TABLE _schema ADD COLUMN position INTEGER DEFAULT 0")
+	env.ConfigDBConn.Exec("ALTER TABLE _cron_jobs ADD COLUMN schedule_meta TEXT")
+	env.ConfigDBConn.Exec("ALTER TABLE _schema ADD COLUMN position INTEGER DEFAULT 0")
 }
 
 func (env *Environment) initMasterKey() {
-	var count int
-	env.DBConn.QueryRow("SELECT COUNT(*) FROM _api_keys").Scan(&count)
-	if count == 0 {
+	if len(appSettings.ApiKeys) == 0 {
 		b := make([]byte, 16)
 		crand.Read(b)
 		newKey := "sk_" + hex.EncodeToString(b)
 
-		allPerms := `{"production":true,"staging":true,"collections":{"*":["item","schema"]},"routes":true,"schedules":true,"public":true,"settings":true,"keys":true,"logs":true}`
-		env.DBConn.Exec("INSERT INTO _api_keys (key, name, permissions, created) VALUES (?, ?, ?, ?)",
-			newKey, "admin", allPerms, time.Now().Unix())
+		var allPerms map[string]any
+		json.Unmarshal([]byte(`{"production":true,"staging":true,"collections":{"*":["item","schema"]},"routes":true,"schedules":true,"public":true,"settings":true,"keys":true,"logs":true}`), &allPerms)
+
+		appSettings.ApiKeys = append(appSettings.ApiKeys, ApiKey{
+			ID:          1,
+			Key:         newKey,
+			Name:        "admin",
+			Permissions: allPerms,
+			Created:     time.Now().Unix(),
+		})
+		saveSettings(appSettings)
 
 		fmt.Println("\n=================================================================")
 		fmt.Printf(" INITIAL API KEY: %s\n", newKey)
@@ -302,9 +355,24 @@ func generateNewMasterKey() {
 	crand.Read(b)
 	newKey := "sk_" + hex.EncodeToString(b)
 
-	allPerms := `{"production":true,"staging":true,"collections":{"*":["item","schema"]},"routes":true,"schedules":true,"public":true,"settings":true,"keys":true,"logs":true}`
-	ProdEnv.DBConn.Exec("INSERT INTO _api_keys (key, name, permissions, created) VALUES (?, ?, ?, ?)",
-		newKey, "cli-generated", allPerms, time.Now().Unix())
+	var allPerms map[string]any
+	json.Unmarshal([]byte(`{"production":true,"staging":true,"collections":{"*":["item","schema"]},"routes":true,"schedules":true,"public":true,"settings":true,"keys":true,"logs":true}`), &allPerms)
+
+	maxID := 0
+	for _, ak := range appSettings.ApiKeys {
+		if ak.ID > maxID {
+			maxID = ak.ID
+		}
+	}
+
+	appSettings.ApiKeys = append(appSettings.ApiKeys, ApiKey{
+		ID:          maxID + 1,
+		Key:         newKey,
+		Name:        "cli-generated",
+		Permissions: allPerms,
+		Created:     time.Now().Unix(),
+	})
+	saveSettings(appSettings)
 
 	fmt.Println("\n=================================================================")
 	fmt.Printf(" NEW API KEY GENERATED: %s\n", newKey)
@@ -341,7 +409,7 @@ func (env *Environment) initCron() {
 		}),
 	)
 
-	rows, err := env.DBConn.Query("SELECT id, schedule, schedule_meta, script_path FROM _cron_jobs WHERE active = 1")
+	rows, err := env.ConfigDBConn.Query("SELECT id, schedule, schedule_meta, script_path FROM _cron_jobs WHERE active = 1")
 	if err == nil {
 		defer rows.Close()
 		parseIntField := func(v any) int {
@@ -489,20 +557,34 @@ func createBackup(destDir string, full bool) error {
 	timestamp := time.Now().Format("2006-01-02_15-04-05")
 
 	if !full {
-		src := filepath.Join(ProdEnv.DataPath, "database.sqlite")
-		dst := filepath.Join(destDir, timestamp+".sqlite")
-		in, err := os.Open(src)
-		if err != nil {
+		copyFile := func(src, dst string) error {
+			in, err := os.Open(src)
+			if err != nil {
+				return err
+			}
+			defer in.Close()
+			out, err := os.Create(dst)
+			if err != nil {
+				return err
+			}
+			defer out.Close()
+			_, err = io.Copy(out, in)
 			return err
 		}
-		defer in.Close()
-		out, err := os.Create(dst)
-		if err != nil {
+
+		srcConfig := filepath.Join(ProdEnv.DataPath, "config.sqlite")
+		dstConfig := filepath.Join(destDir, timestamp+"_config.sqlite")
+		if err := copyFile(srcConfig, dstConfig); err != nil {
 			return err
 		}
-		defer out.Close()
-		_, err = io.Copy(out, in)
-		return err
+
+		srcData := filepath.Join(ProdEnv.DataPath, "data.sqlite")
+		dstData := filepath.Join(destDir, timestamp+"_data.sqlite")
+		if err := copyFile(srcData, dstData); err != nil {
+			return err
+		}
+
+		return nil
 	}
 
 	dst := filepath.Join(destDir, timestamp+".zip")
@@ -604,7 +686,7 @@ func (env *Environment) getCollectionSchema(collection string) []SchemaField {
 	}
 	var schema []SchemaField = []SchemaField{}
 	q := "SELECT s.field, s.type, s.required FROM _schema s JOIN _collections c ON s.collection_id = c.id WHERE c.name = ? ORDER BY s.position ASC, s.id ASC"
-	rows, err := env.DBConn.Query(q, collection)
+	rows, err := env.ConfigDBConn.Query(q, collection)
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -620,12 +702,12 @@ func (env *Environment) getCollectionSchema(collection string) []SchemaField {
 
 func (env *Environment) createCollectionInDB(name string, schema []SchemaField) error {
 	var exists int
-	env.DBConn.QueryRow("SELECT COUNT(*) FROM _collections WHERE name = ?", name).Scan(&exists)
+	env.ConfigDBConn.QueryRow("SELECT COUNT(*) FROM _collections WHERE name = ?", name).Scan(&exists)
 	if exists > 0 {
 		return fmt.Errorf("collection already exists")
 	}
 
-	res, err := env.DBConn.Exec("INSERT INTO _collections (name, created, updated) VALUES (?, ?, ?)",
+	res, err := env.ConfigDBConn.Exec("INSERT INTO _collections (name, created, updated) VALUES (?, ?, ?)",
 		name, time.Now().Unix(), time.Now().Unix())
 	if err != nil {
 		return err
@@ -641,25 +723,25 @@ func (env *Environment) createCollectionInDB(name string, schema []SchemaField) 
 		case "bool":
 			sqlType = "BOOLEAN"
 		}
-		env.DBConn.Exec("INSERT INTO _schema (collection_id, field, type, required, position) VALUES (?, ?, ?, ?, ?)",
+		env.ConfigDBConn.Exec("INSERT INTO _schema (collection_id, field, type, required, position) VALUES (?, ?, ?, ?, ?)",
 			collectionID, field.Name, field.Type, field.Required, i)
 		sqlFields = append(sqlFields, fmt.Sprintf("%s %s", field.Name, sqlType))
 	}
 	createSQL := fmt.Sprintf("CREATE TABLE %s (%s)", name, strings.Join(sqlFields, ", "))
-	_, err = env.DBConn.Exec(createSQL)
+	_, err = env.DataDBConn.Exec(createSQL)
 	env.SchemaCache.Delete(name)
 	return err
 }
 
 func (env *Environment) updateCollectionInDB(name string, schema []SchemaField) error {
 	var collectionID int
-	err := env.DBConn.QueryRow("SELECT id FROM _collections WHERE name = ?", name).Scan(&collectionID)
+	err := env.ConfigDBConn.QueryRow("SELECT id FROM _collections WHERE name = ?", name).Scan(&collectionID)
 	if err != nil {
 		return fmt.Errorf("collection not found")
 	}
 
 	existingSchema := make(map[string]string)
-	rows, err := env.DBConn.Query("SELECT field, type FROM _schema WHERE collection_id = ?", collectionID)
+	rows, err := env.ConfigDBConn.Query("SELECT field, type FROM _schema WHERE collection_id = ?", collectionID)
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -680,22 +762,22 @@ func (env *Environment) updateCollectionInDB(name string, schema []SchemaField) 
 			case "bool":
 				sqlType = "BOOLEAN"
 			}
-			env.DBConn.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", name, field.Name, sqlType))
-			env.DBConn.Exec("INSERT INTO _schema (collection_id, field, type, required, position) VALUES (?, ?, ?, ?, ?)",
+			env.DataDBConn.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", name, field.Name, sqlType))
+			env.ConfigDBConn.Exec("INSERT INTO _schema (collection_id, field, type, required, position) VALUES (?, ?, ?, ?, ?)",
 				collectionID, field.Name, field.Type, field.Required, i)
 		} else {
-			env.DBConn.Exec("UPDATE _schema SET type = ?, required = ?, position = ? WHERE collection_id = ? AND field = ?", field.Type, field.Required, i, collectionID, field.Name)
+			env.ConfigDBConn.Exec("UPDATE _schema SET type = ?, required = ?, position = ? WHERE collection_id = ? AND field = ?", field.Type, field.Required, i, collectionID, field.Name)
 		}
 	}
 
 	for existingField := range existingSchema {
 		if !newFields[existingField] {
-			env.DBConn.Exec(fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", name, existingField))
-			env.DBConn.Exec("DELETE FROM _schema WHERE collection_id = ? AND field = ?", collectionID, existingField)
+			env.DataDBConn.Exec(fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", name, existingField))
+			env.ConfigDBConn.Exec("DELETE FROM _schema WHERE collection_id = ? AND field = ?", collectionID, existingField)
 		}
 	}
 
-	env.DBConn.Exec("UPDATE _collections SET updated = ? WHERE id = ?", time.Now().Unix(), collectionID)
+	env.ConfigDBConn.Exec("UPDATE _collections SET updated = ? WHERE id = ?", time.Now().Unix(), collectionID)
 	env.SchemaCache.Delete(name)
 	return nil
 }
@@ -798,11 +880,17 @@ func (env *Environment) adminMiddleware(next http.HandlerFunc) http.HandlerFunc 
 		}
 
 		ip := getIP(r)
-		var permissions string
-		err := ProdEnv.DBConn.QueryRow("SELECT permissions FROM _api_keys WHERE key = ?", key).Scan(&permissions)
-		if err == nil {
-			var p map[string]any
-			json.Unmarshal([]byte(permissions), &p)
+		
+		var foundKey *ApiKey
+		for _, ak := range appSettings.ApiKeys {
+			if ak.Key == key {
+				foundKey = &ak
+				break
+			}
+		}
+
+		if foundKey != nil {
+			p := foundKey.Permissions
 
 			if env.IsStaging {
 				if val, ok := p["staging"].(bool); !ok || !val {
@@ -817,7 +905,8 @@ func (env *Environment) adminMiddleware(next http.HandlerFunc) http.HandlerFunc 
 			}
 
 			recordAdminAttempt(ip, true)
-			r.Header.Set("X-Admin-Perms", permissions)
+			permsBytes, _ := json.Marshal(p)
+			r.Header.Set("X-Admin-Perms", string(permsBytes))
 			next(w, r)
 			return
 		}
@@ -890,11 +979,17 @@ func (env *Environment) handleAdminLogin(w http.ResponseWriter, r *http.Request)
 	json.NewDecoder(r.Body).Decode(&creds)
 
 	ip := getIP(r)
-	var permissions string
-	err := ProdEnv.DBConn.QueryRow("SELECT permissions FROM _api_keys WHERE key = ?", creds.APIKey).Scan(&permissions)
-	if err == nil {
-		var p map[string]any
-		json.Unmarshal([]byte(permissions), &p)
+
+	var foundKey *ApiKey
+	for _, ak := range appSettings.ApiKeys {
+		if ak.Key == creds.APIKey {
+			foundKey = &ak
+			break
+		}
+	}
+
+	if foundKey != nil {
+		p := foundKey.Permissions
 
 		if env.IsStaging {
 			if val, ok := p["staging"].(bool); !ok || !val {
@@ -1088,8 +1183,8 @@ func (env *Environment) handleStagingSync(w http.ResponseWriter, r *http.Request
 		os.RemoveAll(targetEnv.ScriptsPath)
 		copyDir(sourceEnv.ScriptsPath, targetEnv.ScriptsPath)
 
-		targetEnv.DBConn.Exec("DELETE FROM _cron_jobs")
-		rows, err := sourceEnv.DBConn.Query("SELECT name, schedule, schedule_meta, script_path, active, created FROM _cron_jobs")
+		targetEnv.ConfigDBConn.Exec("DELETE FROM _cron_jobs")
+		rows, err := sourceEnv.ConfigDBConn.Query("SELECT name, schedule, schedule_meta, script_path, active, created FROM _cron_jobs")
 		if err == nil {
 			for rows.Next() {
 				var name, schedule, scriptPath string
@@ -1104,7 +1199,7 @@ func (env *Environment) handleStagingSync(w http.ResponseWriter, r *http.Request
 				if b, ok := createdRaw.([]byte); ok {
 					created = string(b)
 				}
-				targetEnv.DBConn.Exec("INSERT INTO _cron_jobs (name, schedule, schedule_meta, script_path, active, created) VALUES (?, ?, ?, ?, ?, ?)",
+				targetEnv.ConfigDBConn.Exec("INSERT INTO _cron_jobs (name, schedule, schedule_meta, script_path, active, created) VALUES (?, ?, ?, ?, ?, ?)",
 					name, schedule, scheduleMeta, scriptPath, active, created)
 			}
 			rows.Close()
@@ -1113,7 +1208,7 @@ func (env *Environment) handleStagingSync(w http.ResponseWriter, r *http.Request
 	}
 	if req.Collections {
 		var targetCollections []string
-		tRows, _ := targetEnv.DBConn.Query("SELECT name FROM _collections")
+		tRows, _ := targetEnv.ConfigDBConn.Query("SELECT name FROM _collections")
 		if tRows != nil {
 			for tRows.Next() {
 				var name string
@@ -1124,13 +1219,13 @@ func (env *Environment) handleStagingSync(w http.ResponseWriter, r *http.Request
 		}
 
 		for _, tc := range targetCollections {
-			targetEnv.DBConn.Exec("DROP TABLE IF EXISTS " + tc)
+			targetEnv.DataDBConn.Exec("DROP TABLE IF EXISTS " + tc)
 		}
-		targetEnv.DBConn.Exec("DELETE FROM _collections")
-		targetEnv.DBConn.Exec("DELETE FROM _schema")
+		targetEnv.ConfigDBConn.Exec("DELETE FROM _collections")
+		targetEnv.ConfigDBConn.Exec("DELETE FROM _schema")
 
 		var collections []string
-		rows, _ := sourceEnv.DBConn.Query("SELECT name FROM _collections ORDER BY id ASC")
+		rows, _ := sourceEnv.ConfigDBConn.Query("SELECT name FROM _collections ORDER BY id ASC")
 		if rows != nil {
 			for rows.Next() {
 				var name string
@@ -1145,8 +1240,8 @@ func (env *Environment) handleStagingSync(w http.ResponseWriter, r *http.Request
 			targetEnv.createCollectionInDB(cName, schema)
 		}
 
-		targetDBPath := filepath.Join(targetEnv.DataPath, "database.sqlite")
-		conn, err := sourceEnv.DBConn.Conn(r.Context())
+		targetDBPath := filepath.Join(targetEnv.DataPath, "data.sqlite")
+		conn, err := sourceEnv.DataDBConn.Conn(r.Context())
 		if err == nil {
 			defer conn.Close()
 			_, err = conn.ExecContext(r.Context(), fmt.Sprintf("ATTACH DATABASE '%s' AS target_db", targetDBPath))
@@ -1213,26 +1308,19 @@ func (env *Environment) handleAdminKeys(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+	
 	if r.Method == "GET" {
-		rows, _ := env.DBConn.Query("SELECT id, name, key, permissions, created FROM _api_keys ORDER BY id DESC")
-		defer rows.Close()
-		results := []map[string]any{}
-		for rows.Next() {
-			var id int
-			var name, key, perms string
-			var createdRaw any
-			rows.Scan(&id, &name, &key, &perms, &createdRaw)
-			
-			var created any = createdRaw
-			if b, ok := createdRaw.([]byte); ok {
-				created = string(b)
-			}
-			
-			var pMap map[string]any
-			json.Unmarshal([]byte(perms), &pMap)
-			results = append(results, map[string]any{"id": id, "name": name, "key": key, "permissions": pMap, "created": created})
+		if appSettings.ApiKeys == nil {
+			json.NewEncoder(w).Encode([]ApiKey{})
+			return
 		}
-		json.NewEncoder(w).Encode(results)
+		// Sort keys so newest appear first (matching old database ORDER BY id DESC)
+		sortedKeys := make([]ApiKey, len(appSettings.ApiKeys))
+		copy(sortedKeys, appSettings.ApiKeys)
+		sort.Slice(sortedKeys, func(i, j int) bool {
+			return sortedKeys[i].ID > sortedKeys[j].ID
+		})
+		json.NewEncoder(w).Encode(sortedKeys)
 		return
 	}
 	if r.Method == "POST" {
@@ -1246,27 +1334,55 @@ func (env *Environment) handleAdminKeys(w http.ResponseWriter, r *http.Request) 
 			req.Name = "Unnamed Key"
 		}
 
-		pBytes, _ := json.Marshal(req.Permissions)
-		permsStr := string(pBytes)
-
 		if req.ID > 0 {
-			env.DBConn.Exec("UPDATE _api_keys SET name=?, permissions=? WHERE id=?", req.Name, permsStr, req.ID)
-			w.Write([]byte(`{"success":true}`))
+			for i, ak := range appSettings.ApiKeys {
+				if ak.ID == req.ID {
+					appSettings.ApiKeys[i].Name = req.Name
+					appSettings.ApiKeys[i].Permissions = req.Permissions
+					saveSettings(appSettings)
+					w.Write([]byte(`{"success":true}`))
+					return
+				}
+			}
+			http.Error(w, "Key not found", 404)
 			return
 		}
 
 		b := make([]byte, 16)
 		crand.Read(b)
 		newKey := "sk_" + hex.EncodeToString(b)
-		env.DBConn.Exec("INSERT INTO _api_keys (key, name, permissions, created) VALUES (?, ?, ?, ?)",
-			newKey, req.Name, permsStr, time.Now().Unix())
+		
+		maxID := 0
+		for _, ak := range appSettings.ApiKeys {
+			if ak.ID > maxID {
+				maxID = ak.ID
+			}
+		}
+
+		appSettings.ApiKeys = append(appSettings.ApiKeys, ApiKey{
+			ID:          maxID + 1,
+			Key:         newKey,
+			Name:        req.Name,
+			Permissions: req.Permissions,
+			Created:     time.Now().Unix(),
+		})
+		saveSettings(appSettings)
 
 		w.Write([]byte(`{"success":true, "key":"` + newKey + `"}`))
 		return
 	}
 	if r.Method == "DELETE" {
-		id := r.URL.Query().Get("id")
-		env.DBConn.Exec("DELETE FROM _api_keys WHERE id = ?", id)
+		idStr := r.URL.Query().Get("id")
+		id, _ := strconv.Atoi(idStr)
+		
+		var newKeys []ApiKey
+		for _, ak := range appSettings.ApiKeys {
+			if ak.ID != id {
+				newKeys = append(newKeys, ak)
+			}
+		}
+		appSettings.ApiKeys = newKeys
+		saveSettings(appSettings)
 		w.Write([]byte(`{"success":true}`))
 		return
 	}
@@ -1279,7 +1395,7 @@ func (env *Environment) handleAdminCrons(w http.ResponseWriter, r *http.Request)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method == "GET" {
-		rows, _ := env.DBConn.Query("SELECT id, name, schedule, schedule_meta, script_path, active, created FROM _cron_jobs ORDER BY id DESC")
+		rows, _ := env.ConfigDBConn.Query("SELECT id, name, schedule, schedule_meta, script_path, active, created FROM _cron_jobs ORDER BY id DESC")
 		defer rows.Close()
 		nextRuns := make(map[int]string)
 		if env.Scheduler != nil {
@@ -1337,10 +1453,10 @@ func (env *Environment) handleAdminCrons(w http.ResponseWriter, r *http.Request)
 		}
 
 		if req.ID > 0 {
-			env.DBConn.Exec("UPDATE _cron_jobs SET name=?, schedule=?, schedule_meta=?, script_path=?, active=? WHERE id=?",
+			env.ConfigDBConn.Exec("UPDATE _cron_jobs SET name=?, schedule=?, schedule_meta=?, script_path=?, active=? WHERE id=?",
 				req.Name, req.Schedule, req.ScheduleMeta, req.ScriptPath, activeInt, req.ID)
 		} else {
-			env.DBConn.Exec("INSERT INTO _cron_jobs (name, schedule, schedule_meta, script_path, active, created) VALUES (?, ?, ?, ?, ?, ?)",
+			env.ConfigDBConn.Exec("INSERT INTO _cron_jobs (name, schedule, schedule_meta, script_path, active, created) VALUES (?, ?, ?, ?, ?, ?)",
 				req.Name, req.Schedule, req.ScheduleMeta, req.ScriptPath, activeInt, time.Now().Unix())
 		}
 		env.initCron()
@@ -1349,7 +1465,7 @@ func (env *Environment) handleAdminCrons(w http.ResponseWriter, r *http.Request)
 	}
 	if r.Method == "DELETE" {
 		id := r.URL.Query().Get("id")
-		env.DBConn.Exec("DELETE FROM _cron_jobs WHERE id = ?", id)
+		env.ConfigDBConn.Exec("DELETE FROM _cron_jobs WHERE id = ?", id)
 		env.initCron()
 		w.Write([]byte(`{"success":true}`))
 		return
@@ -1410,7 +1526,7 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 
 	if path == "" || path == "/" {
 		if r.Method == "GET" {
-			rows, _ := env.DBConn.Query("SELECT * FROM _collections")
+			rows, _ := env.ConfigDBConn.Query("SELECT * FROM _collections")
 			cols, _ := rows.Columns()
 			results := []map[string]any{}
 			for rows.Next() {
@@ -1509,10 +1625,10 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 			}
 
 			var total int
-			env.DBConn.QueryRow("SELECT COUNT(*) FROM "+collection+" WHERE "+whereClause, args...).Scan(&total)
+			env.DataDBConn.QueryRow("SELECT COUNT(*) FROM "+collection+" WHERE "+whereClause, args...).Scan(&total)
 
 			query := "SELECT * FROM " + collection + " WHERE " + whereClause + " ORDER BY id DESC"
-			items, err := queryDB(env.DBConn, query, args...)
+			items, err := queryDB(env.DataDBConn, query, args...)
 			if err != nil {
 				http.Error(w, err.Error(), 500)
 				return
@@ -1545,7 +1661,7 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 				}
 			}
 			q := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", collection, strings.Join(cols, ","), strings.Join(placeholders, ","))
-			if _, err := env.DBConn.Exec(q, args...); err != nil {
+			if _, err := env.DataDBConn.Exec(q, args...); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
@@ -1581,7 +1697,7 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 				}
 				idList := strings.Split(ids, ",")
 				for _, idStr := range idList {
-					env.DBConn.Exec("DELETE FROM "+collection+" WHERE id = ?", idStr)
+					env.DataDBConn.Exec("DELETE FROM "+collection+" WHERE id = ?", idStr)
 				}
 				w.Write([]byte(`{"success":true}`))
 				return
@@ -1590,9 +1706,9 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 				http.Error(w, "Forbidden", 403)
 				return
 			}
-			env.DBConn.Exec("DROP TABLE " + collection)
-			env.DBConn.Exec("DELETE FROM _schema WHERE collection_id = (SELECT id FROM _collections WHERE name = ?)", collection)
-			env.DBConn.Exec("DELETE FROM _collections WHERE name = ?", collection)
+			env.DataDBConn.Exec("DROP TABLE " + collection)
+			env.ConfigDBConn.Exec("DELETE FROM _schema WHERE collection_id = (SELECT id FROM _collections WHERE name = ?)", collection)
+			env.ConfigDBConn.Exec("DELETE FROM _collections WHERE name = ?", collection)
 			env.SchemaCache.Delete(collection)
 			w.Write([]byte(`{"success":true}`))
 			return
@@ -1625,7 +1741,7 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 			}
 			args = append(args, id)
 			q := fmt.Sprintf("UPDATE %s SET %s WHERE id = ?", collection, strings.Join(cols, ","))
-			if _, err := env.DBConn.Exec(q, args...); err != nil {
+			if _, err := env.DataDBConn.Exec(q, args...); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
@@ -1637,7 +1753,7 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 				http.Error(w, "Forbidden", 403)
 				return
 			}
-			env.DBConn.Exec("DELETE FROM "+collection+" WHERE id = ?", id)
+			env.DataDBConn.Exec("DELETE FROM "+collection+" WHERE id = ?", id)
 			w.Write([]byte(`{"success":true}`))
 			return
 		}
@@ -1864,7 +1980,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 			tableCache := make(map[string]*lua.LTable)
 
 			colSet := make(map[string]bool)
-			rows, err := env.DBConn.Query("SELECT name FROM _collections")
+			rows, err := env.ConfigDBConn.Query("SELECT name FROM _collections")
 			if err == nil {
 				for rows.Next() {
 					var n string
@@ -1892,7 +2008,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 				if tbl, ok := tableCache[cacheKey]; ok {
 					return tbl
 				}
-				res, err := queryDB(env.DBConn, fmt.Sprintf("SELECT * FROM %s WHERE id = ?", colName), idStr)
+				res, err := queryDB(env.DataDBConn, fmt.Sprintf("SELECT * FROM %s WHERE id = ?", colName), idStr)
 				if err != nil || len(res) == 0 {
 					return nil
 				}
@@ -1968,7 +2084,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 				return tbl
 			}
 
-			results, err := queryDB(env.DBConn, q, whereVals...)
+			results, err := queryDB(env.DataDBConn, q, whereVals...)
 			if err != nil {
 				L.Push(L.NewTable())
 				return 1
@@ -2016,7 +2132,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 				}
 			}
 			q := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", cName, strings.Join(cols, ","), strings.Join(placeholders, ","))
-			res, err := env.DBConn.Exec(q, args...)
+			res, err := env.DataDBConn.Exec(q, args...)
 			if err != nil {
 				L.Push(lua.LNil)
 				L.Push(lua.LString(err.Error()))
@@ -2057,7 +2173,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 
 			q := fmt.Sprintf("UPDATE %s SET %s WHERE %s", cName, strings.Join(setCols, ", "), strings.Join(whereCols, " AND "))
 			args := append(setVals, whereVals...)
-			_, err := env.DBConn.Exec(q, args...)
+			_, err := env.DataDBConn.Exec(q, args...)
 			if err != nil {
 				L.Push(lua.LBool(false))
 				L.Push(lua.LString(err.Error()))
@@ -2079,7 +2195,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 			}
 
 			q := fmt.Sprintf("DELETE FROM %s WHERE %s", cName, strings.Join(whereCols, " AND "))
-			_, err := env.DBConn.Exec(q, whereVals...)
+			_, err := env.DataDBConn.Exec(q, whereVals...)
 			if err != nil {
 				L.Push(lua.LBool(false))
 				L.Push(lua.LString(err.Error()))
@@ -2114,7 +2230,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 
 			queryUpper := strings.ToUpper(strings.TrimSpace(query))
 			if strings.HasPrefix(queryUpper, "SELECT") || strings.HasPrefix(queryUpper, "PRAGMA") {
-				results, err := queryDB(env.DBConn, query, args...)
+				results, err := queryDB(env.DataDBConn, query, args...)
 				if err != nil {
 					L.Push(lua.LNil)
 					L.Push(lua.LString(err.Error()))
@@ -2127,7 +2243,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 				L.Push(arr)
 				return 1
 			} else {
-				res, err := env.DBConn.Exec(query, args...)
+				res, err := env.DataDBConn.Exec(query, args...)
 				if err != nil {
 					L.Push(lua.LBool(false))
 					L.Push(lua.LString(err.Error()))
