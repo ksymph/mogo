@@ -48,14 +48,6 @@
         OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
         SOFTWARE.
       -->
-      <a href="?tab=keys" class="icon-btn" id="nav-keys-btn" onclick="handleNavClick(event, 'keys')" title="API Keys">
-        <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path
-            d="M10 12C10 14.2091 8.20914 16 6 16C3.79086 16 2 14.2091 2 12C2 9.79086 3.79086 8 6 8C8.20914 8 10 9.79086 10 12ZM10 12H22V15"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="M18 12V15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-      </a>
       <a href="?tab=collections" class="icon-btn" onclick="handleNavClick(event, 'collections')" title="Collections">
         <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M5 12V18C5 18 5 21 12 21C19 21 19 18 19 18V12" stroke="currentColor" stroke-width="2" />
@@ -259,7 +251,7 @@
         state.sort.asc = true;
       }
       if (state.tab === 'collections') renderCollectionTable();
-      if (state.tab === 'keys') renderKeysTable();
+      if (state.tab === 'settings' && state.sub === 'keys') renderKeysTable();
       if (state.tab === 'schedules') renderCronsTable();
     }
 
@@ -531,12 +523,10 @@
       document.getElementById('app-view').style.display = 'flex'; 
       
       if (state.environment === 'staging') {
-        document.getElementById('nav-keys-btn').style.display = 'none';
         document.getElementById('nav-staging-btn').style.display = 'none';
         document.getElementById('nav-settings-btn').style.display = 'none';
         document.getElementById('staging-label').style.display = 'flex';
       } else {
-        document.getElementById('nav-keys-btn').style.display = 'flex';
         document.getElementById('nav-staging-btn').style.display = (state.settings && state.settings.staging_enabled) ? 'flex' : 'none';
         document.getElementById('nav-settings-btn').style.display = 'flex';
         document.getElementById('staging-label').style.display = 'none';
@@ -561,13 +551,12 @@
       if (iconBtn) iconBtn.classList.add('active');
 
       document.getElementById('sub-sidebar').style.display =['collections', 'routes', 'public', 'schedules', 'settings'].includes(tab) ? 'flex' : 'none';
-      document.getElementById('pane-header').style.display = '';
+      document.getElementById('pane-header').style.display = 'flex';
       document.getElementById('pane-header').innerHTML = '';
       document.getElementById('pane-content').innerHTML = '';
       document.getElementById('selection-popup').classList.remove('show');
 
       if (tab === 'collections') loadCollections();
-      if (tab === 'keys') loadKeys();
       if (tab === 'settings') loadSettings('admin');
       if (tab === 'staging') loadStaging();
       if (tab === 'logs') loadLogs();
@@ -850,7 +839,7 @@
     function renderKeysTable() {
       let sorted = sortData([...state.keys]);
       let rows = sorted.map(k => `<tr onclick="viewKeyModal(${k.id})">
-      <td>${k.name}</td><td><code>${k.key}</code></td><td>${k.created}</td>
+      <td>${k.name}</td><td><code>${k.key}</code></td><td>${new Date(k.created * 1000).toLocaleString()}</td>
       <td style="text-align:right"><span class="clickable ml-2" onclick="event.stopPropagation(); deleteKey(${k.id})" title="Delete Key">✕</span></td>
     </tr>`).join('');
       document.getElementById('pane-content').innerHTML = `
@@ -869,7 +858,7 @@
       <div class="detail-box">
         <div><strong>Name:</strong> ${k.name}</div>
         <div><strong>Key:</strong> <code>${k.key}</code></div>
-        <div><strong>Created:</strong> ${k.created}</div>
+        <div><strong>Created:</strong> ${new Date(k.created * 1000).toLocaleString()}</div>
       </div>
       <h4>Permissions</h4>
       <pre class="code-block">${JSON.stringify(k.permissions, null, 2)}</pre>
@@ -955,151 +944,127 @@
       document.getElementById('bkp-cron-interval-sec').style.display = (mode === 'interval') ? 'block' : 'none';
     }
 
-window.saveEditorSettings = function() {
-  localStorage.setItem('mogo_editor_theme', document.querySelector('input[name="ed_theme"]:checked').value);
+    window.saveEditorSettings = function() {
+      localStorage.setItem('mogo_editor_theme', document.querySelector('input[name="ed_theme"]:checked').value);
+      const indentType = document.querySelector('input[name="ed_indent_type"]:checked').value;
+      const insertSpaces = indentType === 'spaces';
+      localStorage.setItem('mogo_editor_insertSpaces', insertSpaces);
+      localStorage.setItem('mogo_editor_tabSize', document.getElementById('ed_tabSize').value);
+      localStorage.setItem('mogo_editor_wordWrap', document.getElementById('ed_wordWrap').checked);
+    };
 
-  // Read indent type from radio group
-  const indentType = document.querySelector('input[name="ed_indent_type"]:checked').value;
-  const insertSpaces = indentType === 'spaces';
-  localStorage.setItem('mogo_editor_insertSpaces', insertSpaces);
+    async function loadSettings(sub = 'admin') {
+      state.sub = sub;
 
-  localStorage.setItem('mogo_editor_tabSize', document.getElementById('ed_tabSize').value);
-  localStorage.setItem('mogo_editor_wordWrap', document.getElementById('ed_wordWrap').checked);
-};
-
-    async function triggerBackup() {
-      let btn = document.getElementById('btn-backup-now');
-      btn.disabled = true;
-      btn.innerText = "Backing up...";
-      try {
-        await api('/backup', { method: 'POST' });
-        alert("Backup completed successfully.");
-      } catch (e) {
-        alert("Backup failed: " + e.message);
+      let subSidebarHtml = `
+        <div class="sub-item ${sub === 'admin' ? 'active' : ''}" onclick="loadSettings('admin')">Admin UI Settings</div>
+        <div class="sub-item ${sub === 'app' ? 'active' : ''}" onclick="loadSettings('app')">App Settings</div>
+        <div class="sub-item ${sub === 'backups' ? 'active' : ''}" onclick="loadSettings('backups')">Backup Manager</div>
+      `;
+      if (state.environment !== 'staging') {
+          subSidebarHtml += `<div class="sub-item ${sub === 'keys' ? 'active' : ''}" onclick="loadSettings('keys')">API Keys</div>`;
       }
-      btn.disabled = false;
-      btn.innerText = "Backup Now";
+      document.getElementById('sub-sidebar').innerHTML = subSidebarHtml;
+
+      document.getElementById('pane-header').style.display = 'flex';
+      document.getElementById('pane-content').innerHTML = '';
+
+      if (sub === 'admin') {
+        loadAdminUISettings();
+      } else if (sub === 'app') {
+        loadAppSettings();
+      } else if (sub === 'backups') {
+        loadBackupManager();
+      } else if (sub === 'keys') {
+        loadKeys();
+      }
     }
 
-async function loadSettings(sub = 'admin') {
-  state.sub = sub;
+    function loadAdminUISettings() {
+      document.getElementById('pane-header').style.display = 'none';
 
-  document.getElementById('sub-sidebar').innerHTML = `
-    <div class="sub-item ${sub === 'admin' ? 'active' : ''}" onclick="loadSettings('admin')">Admin UI Settings</div>
-    <div class="sub-item ${sub === 'app' ? 'active' : ''}" onclick="loadSettings('app')">App Settings</div>
-  `;
+      let theme = localStorage.getItem('mogo_theme') || 'auto';
+      let edTheme = localStorage.getItem('mogo_editor_theme') || 'auto';
+      let edTabSize = localStorage.getItem('mogo_editor_tabSize') || '3';
+      let edInsertSpaces = localStorage.getItem('mogo_editor_insertSpaces') === 'true';
+      let edWordWrap = localStorage.getItem('mogo_editor_wordWrap') !== 'false';
 
-  // Remove pane-header display
+      document.getElementById('pane-content').innerHTML = `
+        <div class="settings-form">
+          <div class="modal">
+            <h3>Theme</h3>
+            <div class="radio-group">
+              <label><input type="radio" name="admin_theme" value="auto" ${theme === 'auto' ? 'checked' : ''} onchange="applyTheme(this.value)"> Auto (System)</label>
+              <label><input type="radio" name="admin_theme" value="light" ${theme === 'light' ? 'checked' : ''} onchange="applyTheme(this.value)"> Light</label>
+              <label><input type="radio" name="admin_theme" value="dark" ${theme === 'dark' ? 'checked' : ''} onchange="applyTheme(this.value)"> Dark</label>
+            </div>
+          </div>
+          <div class="modal">
+            <h3>Code Editor</h3>
+            <div>
+              <div class="hint">Editor Theme</div>
+              <div class="radio-group">
+                <label><input type="radio" name="ed_theme" value="auto" ${edTheme === 'auto' ? 'checked' : ''} onchange="saveEditorSettings()"> Auto (Admin theme)</label>
+                <label><input type="radio" name="ed_theme" value="light" ${edTheme === 'light' ? 'checked' : ''} onchange="saveEditorSettings()"> Light</label>
+                <label><input type="radio" name="ed_theme" value="dark" ${edTheme === 'dark' ? 'checked' : ''} onchange="saveEditorSettings()"> Dark</label>
+              </div>
+            </div>
+            <div class="form-field"><input type="number" id="ed_tabSize" value="${edTabSize}" onchange="saveEditorSettings()" placeholder=" "><label>Tab Size</label></div>
+            <div>
+              <div class="hint">Indent Type</div>
+              <div class="radio-group">
+                <label><input type="radio" name="ed_indent_type" value="tabs" ${!edInsertSpaces ? 'checked' : ''} onchange="saveEditorSettings()"> Tabs</label>
+                <label><input type="radio" name="ed_indent_type" value="spaces" ${edInsertSpaces ? 'checked' : ''} onchange="saveEditorSettings()"> Spaces</label>
+              </div>
+            </div>
+            <div class="form-check"><label><span>Word Wrap</span> <input type="checkbox" id="ed_wordWrap" ${edWordWrap ? 'checked' : ''} onchange="saveEditorSettings()"></label></div>
+          </div>
+        </div>
+      `;
+    }
+
+async function loadAppSettings() {
   document.getElementById('pane-header').style.display = 'none';
-
-  if (sub === 'admin') {
-    let theme = localStorage.getItem('mogo_theme') || 'auto';
-    let edTheme = localStorage.getItem('mogo_editor_theme') || 'auto';
-    let edTabSize = localStorage.getItem('mogo_editor_tabSize') || '3';
-    let edInsertSpaces = localStorage.getItem('mogo_editor_insertSpaces') === 'true';
-    let edWordWrap = localStorage.getItem('mogo_editor_wordWrap') !== 'false';
-
-    document.getElementById('pane-content').innerHTML = `
-      <div class="settings-form">
-        <div class="modal">
-          <h3>Theme</h3>
-          <div class="radio-group">
-            <label>
-              <input type="radio" name="admin_theme" value="auto" ${theme === 'auto' ? 'checked' : ''} onchange="applyTheme(this.value)"> Auto (System)
-            </label>
-            <label>
-              <input type="radio" name="admin_theme" value="light" ${theme === 'light' ? 'checked' : ''} onchange="applyTheme(this.value)"> Light
-            </label>
-            <label>
-              <input type="radio" name="admin_theme" value="dark" ${theme === 'dark' ? 'checked' : ''} onchange="applyTheme(this.value)"> Dark
-            </label>
-          </div>
-        </div>
-        <div class="modal">
-          <h3>Code Editor</h3>
-          <div>
-            <div class="hint">Editor Theme</div>
-            <div class="radio-group">
-              <label>
-                <input type="radio" name="ed_theme" value="auto" ${edTheme === 'auto' ? 'checked' : ''} onchange="saveEditorSettings()"> Auto (Admin theme)
-              </label>
-              <label>
-                <input type="radio" name="ed_theme" value="light" ${edTheme === 'light' ? 'checked' : ''} onchange="saveEditorSettings()"> Light
-              </label>
-              <label>
-                <input type="radio" name="ed_theme" value="dark" ${edTheme === 'dark' ? 'checked' : ''} onchange="saveEditorSettings()"> Dark
-              </label>
-            </div>
-          </div>
-          <div class="form-field"><input type="number" id="ed_tabSize" value="${edTabSize}" onchange="saveEditorSettings()" placeholder=" "><label>Tab Size</label></div>
-          <div>
-            <div class="hint">Indent Type</div>
-            <div class="radio-group">
-              <label>
-                <input type="radio" name="ed_indent_type" value="tabs" ${!edInsertSpaces ? 'checked' : ''} onchange="saveEditorSettings()"> Tabs
-              </label>
-              <label>
-                <input type="radio" name="ed_indent_type" value="spaces" ${edInsertSpaces ? 'checked' : ''} onchange="saveEditorSettings()"> Spaces
-              </label>
-            </div>
-          </div>
-          <div class="form-check"><label><span>Word Wrap</span> <input type="checkbox" id="ed_wordWrap" ${edWordWrap ? 'checked' : ''} onchange="saveEditorSettings()"></label></div>
-        </div>
-      </div>
-    `;
-    return;
-  }
-
-  // App settings logic
   const s = state.settings;
 
   let mode = 'disabled';
   let bkpD = '', bkpH = '', bkpM = '', bkpS = '';
   if (s.backup_sched && s.backup_sched !== 'Disabled') {
     if (s.backup_sched_meta) {
-      try { let meta = JSON.parse(s.backup_sched_meta); mode = meta.mode; bkpD = meta.d || ''; bkpH = meta.h || ''; bkpM = meta.m || ''; bkpS = meta.s || ''; } catch (e) { }
+      try { let meta = JSON.parse(s.backup_sched_meta); mode = meta.mode; bkpD = meta.d || ''; bkpH = meta.h || ''; bkpM = meta.m || ''; bkpS = meta.s || ''; } catch (e) { mode = 'raw'; }
     } else mode = 'raw';
   }
 
   document.getElementById('pane-content').innerHTML = `
     <div class="settings-form" oninput="document.getElementById('btn-save-settings').disabled = false; window.updateBackupCronUI && window.updateBackupCronUI()">
-      
       <div class="modal">
         <h3>Server</h3>
-        <div class="form-field">
-          <input type="number" id="s-port" value="${s.port || 8080}" placeholder=" " min="1" max="65535">
-          <label>Port</label>
-        </div>
-        <div class="form-field">
-          <input type="number" id="s-staging-port" value="${s.staging_port || 8090}" placeholder=" " min="1" max="65535">
-          <label>Staging Port</label>
-        </div>
+        <div class="form-field"><input type="number" id="s-port" value="${s.port || 8080}" placeholder=" " min="1" max="65535"><label>Port</label></div>
+        <div class="form-field"><input type="number" id="s-staging-port" value="${s.staging_port || 8090}" placeholder=" " min="1" max="65535"><label>Staging Port</label></div>
         <div class="form-check"><label><span>Enable Staging Environment</span> <input type="checkbox" id="s-staging-enabled" ${s.staging_enabled ? 'checked' : ''}></label></div>
         <div class="hint">Restart the server for port changes to take effect.</div>
       </div>
       
       <div class="modal">
         <h3>Logs</h3>
-        <div class="form-field">
-          <input type="number" id="s-log-ret" value="${s.log_retention_days || 30}" placeholder=" ">
-          <label>Keep for (days)</label>
-        </div>
+        <div class="form-field"><input type="number" id="s-log-ret" value="${s.log_retention_days || 30}" placeholder=" "><label>Keep for (days)</label></div>
       </div>
 
       <div class="modal">
-        <h3>Backups</h3>
-        <div class="form-field">
-          <input id="s-bkp-dir" value="${s.backup_dest_dir || ''}" placeholder=" ">
-          <label>Backups directory (default: data/backups)</label>
-        </div>
-
+        <h3>Scheduled Backups</h3>
+        <div class="form-field"><input id="s-bkp-dir" value="${s.backup_dest_dir || ''}" placeholder=" "><label>Backups directory (default: data/backups)</label></div>
+        
         <div>
-          <div class="hint">Back up...</div>
-          <div class="radio-group" style="gap:0.5rem;">
-            <label><input type="radio" name="bkp_scope" value="db" ${!s.backup_full ? 'checked' : ''}> Only Collections</label>
-            <label><input type="radio" name="bkp_scope" value="all" ${s.backup_full ? 'checked' : ''}> Everything (collections, scripts, public files, etc.)</label>
-          </div>
+          <div class="hint">Backup Preset</div>
+          <select id="s-bkp-type" style="width:100%;">
+            <option value="complete" ${s.backup_type === 'complete' ? 'selected' : ''}>Complete Snapshot (Config, Data, Code, Uploads)</option>
+            <option value="content" ${s.backup_type === 'content' ? 'selected' : ''}>Content & State (Data, Uploads)</option>
+            <option value="template" ${s.backup_type === 'template' ? 'selected' : ''}>App Template (Config, Code)</option>
+          </select>
+          <div class="hint" style="margin-top:0.25rem;">Determines what gets included in scheduled and manual backups.</div>
         </div>
+        
+        <div class="form-field"><input type="number" id="s-bkp-retention" value="${s.backup_retention || 10}" placeholder=" " min="0"><label>Keep last X backups (0 for unlimited)</label></div>
 
         <div>
           <div class="hint">Schedule Backups</div>
@@ -1122,11 +1087,6 @@ async function loadSettings(sub = 'admin') {
             <div class="form-field"><input type="number" id="s-bkp-s" min="1" value="${bkpS}" placeholder=" "><label>Secs</label></div>
           </div>
         </div>
-
-        <div class="hbox">
-          <button id="btn-backup-now" class="btn" style="flex:1" onclick="triggerBackup()">Backup Now</button>
-          <button class="btn secondary" style="flex:1" onclick="window.location.href='/api/backup'">Download Backup</button>
-        </div>
       </div>
 
       <div class="modal">
@@ -1134,18 +1094,12 @@ async function loadSettings(sub = 'admin') {
         <div class="form-check"><label><span>Allow Unsafe Lua</span><input type="checkbox" id="set_unsafe_lua" ${s.unsafe_lua  ? 'checked' : ''}></label></div>
         <div class="hint" style="margin-top: -1em;">Give Lua scripts access to complete os, io, and debug libraries</div>
         <h5>CORS & Rate Limiting</h5>
-        <div class="form-field">
-          <input id="s-origins" value="${s.allowed_origins || ''}" placeholder=" ">
-          <label>Allowed Origins (e.g. *, http://localhost:3000)</label>
-        </div>
+        <div class="form-field"><input id="s-origins" value="${s.allowed_origins || ''}" placeholder=" "><label>Allowed Origins (e.g. *, http://localhost:3000)</label></div>
         <div class="hbox">
           <div class="form-field"><input type="number" id="s-pub-rps" value="${s.rate_limit_rps || 50}" placeholder=" "><label>Public RPS</label></div>
           <div class="form-field"><input type="number" id="s-pub-burst" value="${s.rate_limit_burst || 100}" placeholder=" "><label>Public Burst</label></div>
         </div>
-        <div class="form-field">
-          <input type="number" id="s-adm-retries" value="${s.admin_max_retries !== undefined ? s.admin_max_retries : 5}" placeholder=" ">
-          <label>Admin Max Retries</label>
-        </div>
+        <div class="form-field"><input type="number" id="s-adm-retries" value="${s.admin_max_retries !== undefined ? s.admin_max_retries : 5}" placeholder=" "><label>Admin Max Retries</label></div>
         <div class="hint">Set limits to 0 to disable.</div>
       </div>
 
@@ -1179,7 +1133,8 @@ async function loadSettings(sub = 'admin') {
         staging_enabled: document.getElementById('s-staging-enabled').checked,
         staging_port: parseInt(document.getElementById('s-staging-port').value, 10) || 8090,
         backup_dest_dir: document.getElementById('s-bkp-dir').value,
-        backup_full: document.querySelector('input[name="bkp_scope"]:checked').value === 'all',
+        backup_type: document.getElementById('s-bkp-type').value,
+        backup_retention: parseInt(document.getElementById('s-bkp-retention').value, 10),
         backup_sched: schedule,
         backup_sched_meta: JSON.stringify(meta),
         allowed_origins: document.getElementById('s-origins').value,
@@ -1198,6 +1153,122 @@ async function loadSettings(sub = 'admin') {
       
       document.getElementById('btn-save-settings').disabled = true;
     }
+
+    function formatBytes(bytes, decimals = 2) {
+      if (!+bytes) return '0 Bytes';
+      const k = 1024;
+      const dm = decimals < 0 ? 0 : decimals;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+    }
+
+    async function loadBackupManager() {
+        document.getElementById('pane-header').innerHTML = `
+            <h2>Backup Manager</h2>
+            <div class="hbox" style="gap:8px;">
+                <select id="manual-backup-type">
+                    <option value="complete" ${state.settings.backup_type === 'complete' || !state.settings.backup_type ? 'selected' : ''}>Complete Snapshot</option>
+                    <option value="content" ${state.settings.backup_type === 'content' ? 'selected' : ''}>Content & State</option>
+                    <option value="template" ${state.settings.backup_type === 'template' ? 'selected' : ''}>App Template</option>
+                </select>
+                <button id="btn-manual-backup" class="btn" onclick="manualBackup()">Create New Backup</button>
+            </div>
+        `;
+        document.getElementById('pane-content').innerHTML = `<div class="loader"></div>`;
+
+        try {
+            const backups = await api('/backup');
+            if (backups.length === 0) {
+                document.getElementById('pane-content').innerHTML = '<p style="padding:1.5rem">No backups found.</p>';
+                return;
+            }
+
+            let rows = backups.map(b => {
+                const readableDate = b.date.replace('_', ' ');
+                return `
+                    <tr>
+                        <td>${readableDate}</td>
+                        <td>${b.type}</td>
+                        <td>${formatBytes(b.size)}</td>
+                        <td class="text-right" style="white-space:nowrap;">
+                            <button class="btn secondary" onclick="downloadBackup('${esc(b.filename)}')">Download</button>
+                            <button class="btn" onclick="restoreBackup('${esc(b.filename)}')">Restore</button>
+                            <button class="btn danger" onclick="deleteBackup('${esc(b.filename)}')">Delete</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            document.getElementById('pane-content').innerHTML = `
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Size</th>
+                            <th class="text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
+        } catch(e) {
+            document.getElementById('pane-content').innerHTML = `<p style="padding:1.5rem; color: var(--danger)">Error loading backups: ${e.message}</p>`;
+        }
+    }
+
+    async function manualBackup() {
+        const btn = document.getElementById('btn-manual-backup');
+        const backupType = document.getElementById('manual-backup-type').value;
+        const origText = btn.innerText;
+        btn.disabled = true;
+        btn.innerText = 'Creating...';
+        try {
+            await api('/backup', { method: 'POST', body: { type: backupType } });
+            loadBackupManager();
+        } catch (e) {
+            alert('Backup failed: ' + e.message);
+        }
+        btn.disabled = false;
+        btn.innerText = origText;
+    }
+
+    function downloadBackup(filename) {
+        window.location.href = '/api/backup/download?file=' + encodeURIComponent(filename);
+    }
+
+    async function restoreBackup(filename) {
+        if (!confirm(`Are you sure you want to restore from "${filename}"?\n\nThis will OVERWRITE current data and RESTART the server. The admin panel will become unresponsive during the process and then reload.`)) {
+            return;
+        }
+
+        openModal('Restoring Backup...', '<div class="loader"></div><p style="text-align:center;">Please wait. The server is being restored. This page will reload automatically.</p>');
+        document.querySelector('#modal').style.pointerEvents = 'none';
+
+        try {
+            await api('/backup/restore', { method: 'POST', body: { file: filename } });
+            // The request will likely not complete because the server restarts. We'll just wait and reload.
+            setTimeout(() => window.location.reload(), 5000);
+        } catch (e) {
+            // If the request *does* complete with an error, the server didn't restart.
+            alert('Restore failed: ' + e.message);
+            document.querySelector('#modal').style.pointerEvents = 'auto';
+            closeModal();
+        }
+    }
+
+    async function deleteBackup(filename) {
+        if (confirm(`Are you sure you want to delete the backup file "${filename}"? This action cannot be undone.`)) {
+            try {
+                await api(`/backup?file=${encodeURIComponent(filename)}`, { method: 'DELETE' });
+                loadBackupManager();
+            } catch (e) {
+                alert('Delete failed: ' + e.message);
+            }
+        }
+    }
+
 
     // ---------- staging dashboard ----------
     function loadStaging() {

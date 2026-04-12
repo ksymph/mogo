@@ -32,10 +32,13 @@ import (
 var embedFS embed.FS
 
 var (
-	rootDir     string
-	appSettings Settings
-	ProdEnv     *Environment
-	StagingEnv  *Environment
+	rootDir      string
+	appSettings  Settings
+	ProdEnv      *Environment
+	StagingEnv   *Environment
+	restoreMu    sync.Mutex
+	stagingMu    sync.Mutex
+	stagingStarted bool
 )
 
 type Environment struct {
@@ -89,13 +92,14 @@ type ApiKey struct {
 type Settings struct {
 	ApiKeys         []ApiKey `json:"api_keys"`
 	BackupDestDir   string   `json:"backup_dest_dir"`
-	BackupFull      bool     `json:"backup_full"`
+	BackupType      string   `json:"backup_type"`
+	BackupRetention int      `json:"backup_retention"`
 	BackupSched     string   `json:"backup_sched"`
 	BackupSchedMeta string   `json:"backup_sched_meta"`
 
-	AllowedOrigins  string  `json:"allowed_origins"`
-	RateLimitRPS    float64 `json:"rate_limit_rps"`
-	RateLimitBurst  int     `json:"rate_limit_burst"`
+	AllowedOrigins string  `json:"allowed_origins"`
+	RateLimitRPS   float64 `json:"rate_limit_rps"`
+	RateLimitBurst int     `json:"rate_limit_burst"`
 	AdminMaxRetries int     `json:"admin_max_retries"`
 
 	LogRetentionDays int  `json:"log_retention_days"`
@@ -114,6 +118,8 @@ func loadSettings() {
 	appSettings.Port = 8080
 	appSettings.StagingPort = 8090
 	appSettings.StagingEnabled = false
+	appSettings.BackupType = "complete"
+	appSettings.BackupRetention = 10
 
 	b, err := os.ReadFile(filepath.Join(ProdEnv.DataPath, "settings.json"))
 	if err == nil {
@@ -380,7 +386,7 @@ func generateNewMasterKey() {
 }
 
 // -----------------------------------------------------------------------------
-// 1.5. CRON JOBS
+// 1.5. CRON JOBS & BACKUPS
 // -----------------------------------------------------------------------------
 func (env *Environment) initCron() {
 	if env.Scheduler != nil {
@@ -506,7 +512,7 @@ func (env *Environment) initCron() {
 		_, err := env.Scheduler.NewJob(
 			jobDef,
 			gocron.NewTask(func() {
-				createBackup(appSettings.BackupDestDir, appSettings.BackupFull)
+				createBackup(appSettings.BackupDestDir, appSettings.BackupType)
 			}),
 		)
 		if err != nil {
@@ -549,98 +555,217 @@ func (env *Environment) runCronScript(scriptPath string) error {
 	return nil
 }
 
-func createBackup(destDir string, full bool) error {
-	if destDir == "" {
-		destDir = filepath.Join(ProdEnv.DataPath, "backups")
+func zipSource(w *zip.Writer, source, prefix string) error {
+	info, err := os.Stat(source)
+	if err != nil {
+		return nil // Ignore non-existent sources
 	}
-	os.MkdirAll(destDir, os.ModePerm)
-	timestamp := time.Now().Format("2006-01-02_15-04-05")
 
-	if !full {
-		copyFile := func(src, dst string) error {
-			in, err := os.Open(src)
+	if info.IsDir() {
+		return filepath.Walk(source, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
-			defer in.Close()
-			out, err := os.Create(dst)
+			relPath, err := filepath.Rel(source, path)
 			if err != nil {
 				return err
 			}
-			defer out.Close()
-			_, err = io.Copy(out, in)
-			return err
-		}
+			if info.IsDir() {
+				return nil
+			}
+			header, err := zip.FileInfoHeader(info)
+			if err != nil {
+				return err
+			}
+			header.Name = filepath.ToSlash(filepath.Join(prefix, relPath))
+			header.Method = zip.Deflate
 
-		srcConfig := filepath.Join(ProdEnv.DataPath, "config.sqlite")
-		dstConfig := filepath.Join(destDir, timestamp+"_config.sqlite")
-		if err := copyFile(srcConfig, dstConfig); err != nil {
+			writer, err := w.CreateHeader(header)
+			if err != nil {
+				return err
+			}
+			file, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			defer file.Close()
+			_, err = io.Copy(writer, file)
 			return err
-		}
-
-		srcData := filepath.Join(ProdEnv.DataPath, "data.sqlite")
-		dstData := filepath.Join(destDir, timestamp+"_data.sqlite")
-		if err := copyFile(srcData, dstData); err != nil {
-			return err
-		}
-
-		return nil
+		})
 	}
 
-	dst := filepath.Join(destDir, timestamp+".zip")
-	out, err := os.Create(dst)
+	// It's a single file
+	header, err := zip.FileInfoHeader(info)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
-	w := zip.NewWriter(out)
-	defer w.Close()
-	destDirAbs, _ := filepath.Abs(destDir)
-
-	err = filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		absPath, _ := filepath.Abs(path)
-
-		if strings.HasPrefix(absPath, destDirAbs) {
-			if info.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		if info.IsDir() && info.Name() == ".git" {
-			return filepath.SkipDir
-		}
-		if info.IsDir() {
-			return nil
-		}
-
-		fh, err := zip.FileInfoHeader(info)
-		if err != nil {
-			return err
-		}
-		
-		relPath, _ := filepath.Rel(rootDir, path)
-		fh.Name = filepath.ToSlash(relPath)
-		fh.Method = zip.Deflate
-
-		f, err := w.CreateHeader(fh)
-		if err != nil {
-			return err
-		}
-
-		in, err := os.Open(path)
-		if err != nil {
-			return nil
-		}
-		defer in.Close()
-
-		_, err = io.Copy(f, in)
+	header.Name = filepath.ToSlash(prefix)
+	header.Method = zip.Deflate
+	writer, err := w.CreateHeader(header)
+	if err != nil {
 		return err
-	})
+	}
+	file, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	_, err = io.Copy(writer, file)
 	return err
+}
+
+func createBackup(destDir string, backupType string) error {
+	if destDir == "" {
+		destDir = filepath.Join(ProdEnv.DataPath, "backups")
+	}
+	if backupType == "" {
+		backupType = "complete" // Default to complete backup
+	}
+	os.MkdirAll(destDir, os.ModePerm)
+
+	timestamp := time.Now().Format("2006-01-02_15-04-05")
+	filename := fmt.Sprintf("%s_%s.zip", timestamp, backupType)
+	dstPath := filepath.Join(destDir, filename)
+
+	outFile, err := os.Create(dstPath)
+	if err != nil {
+		return fmt.Errorf("failed to create backup file: %w", err)
+	}
+	defer outFile.Close()
+
+	w := zip.NewWriter(outFile)
+	defer w.Close()
+
+	pathsToBackup := make(map[string]string)
+	switch backupType {
+	case "content":
+		pathsToBackup[filepath.Join(rootDir, "data", "data.sqlite")] = "data/data.sqlite"
+		pathsToBackup[filepath.Join(rootDir, "uploads")] = "uploads"
+	case "template":
+		pathsToBackup[filepath.Join(rootDir, "data", "config.sqlite")] = "data/config.sqlite"
+		pathsToBackup[filepath.Join(rootDir, "routes")] = "routes"
+		pathsToBackup[filepath.Join(rootDir, "scripts")] = "scripts"
+		pathsToBackup[filepath.Join(rootDir, "public")] = "public"
+
+		// Add .gitignore
+		gitignoreContent := "data/data.sqlite\ndata/log.sqlite\ndata/backups/\nstaging/\nuploads/"
+		header := &zip.FileHeader{
+			Name: ".gitignore",
+			Method: zip.Deflate,
+			Modified: time.Now(),
+		}
+		writer, _ := w.CreateHeader(header)
+		writer.Write([]byte(gitignoreContent))
+
+	case "complete":
+		fallthrough
+	default:
+		pathsToBackup[filepath.Join(rootDir, "data", "config.sqlite")] = "data/config.sqlite"
+		pathsToBackup[filepath.Join(rootDir, "data", "data.sqlite")] = "data/data.sqlite"
+		pathsToBackup[filepath.Join(rootDir, "data", "settings.json")] = "data/settings.json"
+		pathsToBackup[filepath.Join(rootDir, "routes")] = "routes"
+		pathsToBackup[filepath.Join(rootDir, "scripts")] = "scripts"
+		pathsToBackup[filepath.Join(rootDir, "public")] = "public"
+		pathsToBackup[filepath.Join(rootDir, "uploads")] = "uploads"
+	}
+
+	for source, prefix := range pathsToBackup {
+		if err := zipSource(w, source, prefix); err != nil {
+			log.Printf("Error adding %s to backup: %v", source, err)
+		}
+	}
+
+	w.Close()
+	outFile.Close()
+
+	// Apply retention policy
+	if appSettings.BackupRetention > 0 {
+		files, err := os.ReadDir(destDir)
+		if err != nil {
+			return nil // Don't fail the whole backup for retention error
+		}
+
+		type backupFile struct {
+			Path string
+			Time time.Time
+		}
+		var backups []backupFile
+
+		re := regexp.MustCompile(`^(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})_.*\.zip$`)
+		for _, file := range files {
+			if !file.IsDir() {
+				matches := re.FindStringSubmatch(file.Name())
+				if len(matches) > 1 {
+					t, err := time.Parse("2006-01-02_15-04-05", matches[1])
+					if err == nil {
+						backups = append(backups, backupFile{Path: filepath.Join(destDir, file.Name()), Time: t})
+					}
+				}
+			}
+		}
+
+		if len(backups) > appSettings.BackupRetention {
+			sort.Slice(backups, func(i, j int) bool {
+				return backups[i].Time.Before(backups[j].Time)
+			})
+
+			toDelete := len(backups) - appSettings.BackupRetention
+			for i := 0; i < toDelete; i++ {
+				os.Remove(backups[i].Path)
+			}
+		}
+	}
+
+	return nil
+}
+
+func unzip(src, dest string) error {
+	r, err := zip.OpenReader(src)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	os.MkdirAll(dest, 0755)
+
+	for _, f := range r.File {
+		fpath := filepath.Join(dest, f.Name)
+
+		// Check for ZipSlip vulnerability
+		if !strings.HasPrefix(fpath, filepath.Clean(dest)+string(os.PathSeparator)) {
+			return fmt.Errorf("illegal file path: %s", f.Name)
+		}
+
+		if f.FileInfo().IsDir() {
+			os.MkdirAll(fpath, os.ModePerm)
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(fpath), os.ModePerm); err != nil {
+			return err
+		}
+
+		outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+		if err != nil {
+			return err
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			outFile.Close()
+			return err
+		}
+
+		_, err = io.Copy(outFile, rc)
+
+		outFile.Close()
+		rc.Close()
+
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func copyDir(src, dst string) error {
@@ -1102,8 +1227,11 @@ func (env *Environment) handleAdminSettings(w http.ResponseWriter, r *http.Reque
 	if r.Method == "GET" {
 		json.NewEncoder(w).Encode(appSettings)
 	} else if r.Method == "POST" {
-		var s Settings
-		json.NewDecoder(r.Body).Decode(&s)
+		s := appSettings
+		if err := json.NewDecoder(r.Body).Decode(&s); err != nil && err != io.EOF {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
 
 		wasStagingEnabled := appSettings.StagingEnabled
 		saveSettings(s)
@@ -1121,20 +1249,205 @@ func (env *Environment) handleAdminSettings(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-func (env *Environment) handleAdminBackup(w http.ResponseWriter, r *http.Request) {
+func (env *Environment) handleAdminBackupREST(w http.ResponseWriter, r *http.Request) {
 	if !hasPermission(r, "settings") {
 		http.Error(w, "Forbidden", 403)
 		return
 	}
-	if r.Method == "POST" {
-		err := createBackup(appSettings.BackupDestDir, appSettings.BackupFull)
+	w.Header().Set("Content-Type", "application/json")
+	destDir := appSettings.BackupDestDir
+	if destDir == "" {
+		destDir = filepath.Join(ProdEnv.DataPath, "backups")
+	}
+
+	if r.Method == "GET" {
+		files, err := os.ReadDir(destDir)
+		if err != nil {
+			if os.IsNotExist(err) {
+				json.NewEncoder(w).Encode([]string{})
+				return
+			}
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		type backupInfo struct {
+			Filename string `json:"filename"`
+			Date     string `json:"date"`
+			Type     string `json:"type"`
+			Size     int64  `json:"size"`
+		}
+		var backups []backupInfo
+		re := regexp.MustCompile(`^(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})_(\w+)\.zip$`)
+		for _, file := range files {
+			if !file.IsDir() {
+				matches := re.FindStringSubmatch(file.Name())
+				if len(matches) == 3 {
+					info, err := file.Info()
+					if err == nil {
+						backups = append(backups, backupInfo{
+							Filename: file.Name(),
+							Date:     matches[1],
+							Type:     matches[2],
+							Size:     info.Size(),
+						})
+					}
+				}
+			}
+		}
+		sort.Slice(backups, func(i, j int) bool {
+			return backups[i].Date > backups[j].Date
+		})
+		json.NewEncoder(w).Encode(backups)
+	} else if r.Method == "POST" {
+		var req struct {
+			Type string `json:"type"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		backupType := req.Type
+		if backupType == "" {
+			backupType = appSettings.BackupType
+		}
+		err := createBackup(destDir, backupType)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"success":true}`))
+	} else if r.Method == "DELETE" {
+		filename := r.URL.Query().Get("file")
+		if filename == "" || strings.Contains(filename, "..") {
+			http.Error(w, "Invalid filename", 400)
+			return
+		}
+		err := os.Remove(filepath.Join(destDir, filename))
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
 		w.Write([]byte(`{"success":true}`))
 	}
+}
+
+func (env *Environment) handleAdminBackupDownload(w http.ResponseWriter, r *http.Request) {
+	if !hasPermission(r, "settings") {
+		http.Error(w, "Forbidden", 403)
+		return
+	}
+	destDir := appSettings.BackupDestDir
+	if destDir == "" {
+		destDir = filepath.Join(ProdEnv.DataPath, "backups")
+	}
+
+	filename := r.URL.Query().Get("file")
+	if filename == "" || strings.Contains(filename, "..") {
+		http.Error(w, "Invalid filename", 400)
+		return
+	}
+
+	filePath := filepath.Join(destDir, filename)
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		http.Error(w, "File not found", 404)
+		return
+	}
+
+	w.Header().Set("Content-Disposition", "attachment; filename="+strconv.Quote(filename))
+	w.Header().Set("Content-Type", "application/zip")
+	http.ServeFile(w, r, filePath)
+}
+
+func (env *Environment) handleAdminBackupRestore(w http.ResponseWriter, r *http.Request) {
+	if !hasPermission(r, "settings") {
+		http.Error(w, "Forbidden", 403)
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", 405)
+		return
+	}
+
+	restoreMu.Lock()
+	defer restoreMu.Unlock()
+
+	var req struct {
+		File string `json:"file"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+
+	destDir := appSettings.BackupDestDir
+	if destDir == "" {
+		destDir = filepath.Join(ProdEnv.DataPath, "backups")
+	}
+	zipPath := filepath.Join(destDir, req.File)
+	if _, err := os.Stat(zipPath); os.IsNotExist(err) {
+		http.Error(w, "Backup file not found", 404)
+		return
+	}
+	
+	re := regexp.MustCompile(`_(\w+)\.zip$`)
+	matches := re.FindStringSubmatch(req.File)
+	if len(matches) < 2 {
+		http.Error(w, "Could not determine backup type from filename", 400)
+		return
+	}
+	backupType := matches[1]
+
+	// 1. Close all DB connections
+	ProdEnv.ConfigDBConn.Close()
+	ProdEnv.DataDBConn.Close()
+	ProdEnv.LogDBConn.Close()
+	if StagingEnv != nil {
+		StagingEnv.ConfigDBConn.Close()
+		StagingEnv.DataDBConn.Close()
+		StagingEnv.LogDBConn.Close()
+	}
+
+	// 2. Delete existing files based on backup type
+	pathsToClear := map[string][]string{
+		"content":  {"data/data.sqlite", "uploads"},
+		"template": {"data/config.sqlite", "data/settings.json", "routes", "scripts", "public"},
+		"complete": {"data/config.sqlite", "data/data.sqlite", "data/settings.json", "routes", "scripts", "public", "uploads"},
+	}
+	if paths, ok := pathsToClear[backupType]; ok {
+		for _, p := range paths {
+			fullPath := filepath.Join(rootDir, p)
+			if info, err := os.Stat(fullPath); err == nil {
+				if info.IsDir() {
+					os.RemoveAll(fullPath)
+				} else {
+					os.Remove(fullPath)
+				}
+			}
+		}
+	} else {
+		http.Error(w, "Unknown backup type for restore", 400)
+		return
+	}
+
+	// 3. Unzip the backup
+	if err := unzip(zipPath, rootDir); err != nil {
+		log.Printf("CRITICAL: Restore failed during unzip: %v. The application may be in an inconsistent state. Please restart.", err)
+		http.Error(w, "Failed to unzip backup: "+err.Error(), 500)
+		return
+	}
+
+	// 4. Re-initialize the application state
+	loadSettings() // Load new settings from restored file
+	ProdEnv.initDB()
+	ProdEnv.initRoutes()
+	ProdEnv.initCron()
+	
+	stagingMu.Lock()
+	stagingStarted = false // Allow staging to be restarted if needed
+	stagingMu.Unlock()
+	if appSettings.StagingEnabled {
+		startStagingServer()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"success":true}`))
 }
 
 func (env *Environment) handleStagingSync(w http.ResponseWriter, r *http.Request) {
@@ -2966,7 +3279,9 @@ func startServer(env *Environment, port int) {
 	mux.HandleFunc("/api/auth/check", env.adminMiddleware(env.handleAuthCheck))
 	if !env.IsStaging {
 		mux.HandleFunc("/api/settings", env.adminMiddleware(env.handleAdminSettings))
-		mux.HandleFunc("/api/backup", env.adminMiddleware(env.handleAdminBackup))
+		mux.HandleFunc("/api/backup", env.adminMiddleware(env.handleAdminBackupREST))
+		mux.HandleFunc("/api/backup/download", env.adminMiddleware(env.handleAdminBackupDownload))
+		mux.HandleFunc("/api/backup/restore", env.adminMiddleware(env.handleAdminBackupRestore))
 		mux.HandleFunc("/api/keys", env.adminMiddleware(env.handleAdminKeys))
 		mux.HandleFunc("/api/staging/sync", env.adminMiddleware(env.handleStagingSync))
 	}
@@ -3014,27 +3329,28 @@ func startServer(env *Environment, port int) {
 	}
 }
 
-var stagingStarted bool
-
 func startStagingServer() {
+	stagingMu.Lock()
+	defer stagingMu.Unlock()
+	
 	if stagingStarted {
 		return
 	}
-	stagingStarted = true
 
 	if StagingEnv == nil {
 		StagingEnv = NewEnvironment(filepath.Join(rootDir, "staging"), true)
-		StagingEnv.initDB()
-		StagingEnv.initRoutes()
-		StagingEnv.initLuaPool()
-		StagingEnv.initCron()
 	}
+	StagingEnv.initDB()
+	StagingEnv.initRoutes()
+	StagingEnv.initLuaPool()
+	StagingEnv.initCron()
 
 	stagingPort := appSettings.StagingPort
 	if stagingPort <= 0 {
 		stagingPort = 8090
 	}
-
+	
+	stagingStarted = true
 	go startServer(StagingEnv, stagingPort)
 }
 
