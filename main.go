@@ -2948,6 +2948,14 @@ func main() {
 	if cliStagingPort != 0 {
 		appSettings.StagingPort = cliStagingPort
 	}
+	
+	// Apply the CLI port override and fallbacks BEFORE initializing the DB
+	if cliPort != 0 {
+		appSettings.Port = cliPort
+	}
+	if appSettings.Port <= 0 {
+		appSettings.Port = 8080
+	}
 
 	ProdEnv.initDB()
 
@@ -2961,15 +2969,7 @@ func main() {
 	ProdEnv.initRoutes()
 	ProdEnv.initCron()
 
-	finalPort := appSettings.Port
-	if cliPort != 0 {
-		finalPort = cliPort
-	}
-	if finalPort <= 0 {
-		finalPort = 8080
-	}
-
-	go startServer(ProdEnv, finalPort)
+	go startServer(ProdEnv, appSettings.Port)
 
 	if appSettings.StagingEnabled {
 		startStagingServer()
