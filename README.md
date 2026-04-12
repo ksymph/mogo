@@ -6,6 +6,7 @@ It pairs naturally with [htmx](https://htmx.org/) and the HATEOAS approach, thou
 
 ## Quick Start
 ```bash
+go mod download
 go run main.go
 ```
 or build it:
