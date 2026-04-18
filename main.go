@@ -351,6 +351,13 @@ func (env *Environment) initMasterKey() {
 			Created:     time.Now().Unix(),
 		})
 		saveSettings(appSettings)
+		
+		// Generate a default .gitignore on fresh install
+		gitIgnorePath := filepath.Join(rootDir, ".gitignore")
+		if _, err := os.Stat(gitIgnorePath); os.IsNotExist(err) {
+			ignoreContent := "data/data.sqlite\ndata/log.sqlite\ndata/settings.json\ndata/backups/\nstaging/\nuploads/\n"
+			os.WriteFile(gitIgnorePath, []byte(ignoreContent), 0644)
+		}
 
 		fmt.Println("\n=================================================================")
 		fmt.Printf(" INITIAL API KEY: %s\n", newKey)
@@ -656,17 +663,7 @@ func createBackup(destDir string, backupType string) error {
 		pathsToBackup[filepath.Join(rootDir, "routes")] = "routes"
 		pathsToBackup[filepath.Join(rootDir, "scripts")] = "scripts"
 		pathsToBackup[filepath.Join(rootDir, "public")] = "public"
-
-		// Add .gitignore
-		gitignoreContent := "data/data.sqlite\ndata/log.sqlite\ndata/backups/\nstaging/\nuploads/"
-		header := &zip.FileHeader{
-			Name: ".gitignore",
-			Method: zip.Deflate,
-			Modified: time.Now(),
-		}
-		writer, _ := w.CreateHeader(header)
-		writer.Write([]byte(gitignoreContent))
-
+		pathsToBackup[filepath.Join(rootDir, ".gitignore")] = ".gitignore" // Added
 	case "complete":
 		fallthrough
 	default:
@@ -677,6 +674,7 @@ func createBackup(destDir string, backupType string) error {
 		pathsToBackup[filepath.Join(rootDir, "scripts")] = "scripts"
 		pathsToBackup[filepath.Join(rootDir, "public")] = "public"
 		pathsToBackup[filepath.Join(rootDir, "uploads")] = "uploads"
+		pathsToBackup[filepath.Join(rootDir, ".gitignore")] = ".gitignore" // Added
 	}
 
 	for source, prefix := range pathsToBackup {
