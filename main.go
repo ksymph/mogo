@@ -319,6 +319,7 @@ func (env *Environment) initSystemTables() {
 			schedule_meta TEXT,
 			script_path TEXT NOT NULL,
 			active BOOLEAN DEFAULT 1,
+			prevent_overlap BOOLEAN DEFAULT 0,
 			created INTEGER
 		);`,
 	}
@@ -330,6 +331,7 @@ func (env *Environment) initSystemTables() {
 
 	env.ConfigDBConn.Exec("ALTER TABLE _cron_jobs ADD COLUMN schedule_meta TEXT")
 	env.ConfigDBConn.Exec("ALTER TABLE _schema ADD COLUMN position INTEGER DEFAULT 0")
+	env.ConfigDBConn.Exec("ALTER TABLE _cron_jobs ADD COLUMN prevent_overlap BOOLEAN DEFAULT 0")
 }
 
 func (env *Environment) initMasterKey() {
@@ -416,7 +418,7 @@ func (env *Environment) initCron() {
 		}),
 	)
 
-	rows, err := env.ConfigDBConn.Query("SELECT id, schedule, schedule_meta, script_path FROM _cron_jobs WHERE active = 1")
+	rows, err := env.ConfigDBConn.Query("SELECT id, schedule, schedule_meta, script_path, prevent_overlap FROM _cron_jobs WHERE active = 1")
 	if err == nil {
 		defer rows.Close()
 		parseIntField := func(v any) int {
@@ -432,10 +434,10 @@ func (env *Environment) initCron() {
 		}
 
 		for rows.Next() {
-			var id int
+			var id, preventOverlap int
 			var schedule, scriptPath string
 			var scheduleMeta sql.NullString
-			rows.Scan(&id, &schedule, &scheduleMeta, &scriptPath)
+			rows.Scan(&id, &schedule, &scheduleMeta, &scriptPath, &preventOverlap)
 
 			fullPath := filepath.Join(env.ScriptsPath, scriptPath)
 
@@ -463,10 +465,17 @@ func (env *Environment) initCron() {
 				jobDef = gocron.CronJob(schedule, true)
 			}
 
+			opts := []gocron.JobOption{
+				gocron.WithTags(strconv.Itoa(id)),
+			}
+			if preventOverlap == 1 {
+				opts = append(opts, gocron.WithSingletonMode(gocron.LimitModeReschedule))
+			}
+
 			_, err := env.Scheduler.NewJob(
-				 jobDef,
-				 gocron.NewTask(func() { env.runCronScript(fullPath) }),
-				 gocron.WithTags(strconv.Itoa(id)),
+				jobDef,
+				gocron.NewTask(func() { env.runCronScript(fullPath) }),
+				opts...,
 			)
 			if err != nil {
 				log.Printf("Failed to load cron job %d: %v", id, err)
@@ -1498,14 +1507,14 @@ func (env *Environment) handleStagingSync(w http.ResponseWriter, r *http.Request
 		copyDir(sourceEnv.ScriptsPath, targetEnv.ScriptsPath)
 
 		targetEnv.ConfigDBConn.Exec("DELETE FROM _cron_jobs")
-		rows, err := sourceEnv.ConfigDBConn.Query("SELECT name, schedule, schedule_meta, script_path, active, created FROM _cron_jobs")
+		rows, err := sourceEnv.ConfigDBConn.Query("SELECT name, schedule, schedule_meta, script_path, active, prevent_overlap, created FROM _cron_jobs")
 		if err == nil {
 			for rows.Next() {
 				var name, schedule, scriptPath string
-				var active int
+				var active, preventOverlap int
 				var scheduleMeta sql.NullString
 				var createdRaw any
-				rows.Scan(&name, &schedule, &scheduleMeta, &scriptPath, &active, &createdRaw)
+				rows.Scan(&name, &schedule, &scheduleMeta, &scriptPath, &active, &preventOverlap, &createdRaw)
 				if req.Direction == "prod_to_staging" {
 					active = 0
 				}
@@ -1513,8 +1522,8 @@ func (env *Environment) handleStagingSync(w http.ResponseWriter, r *http.Request
 				if b, ok := createdRaw.([]byte); ok {
 					created = string(b)
 				}
-				targetEnv.ConfigDBConn.Exec("INSERT INTO _cron_jobs (name, schedule, schedule_meta, script_path, active, created) VALUES (?, ?, ?, ?, ?, ?)",
-					name, schedule, scheduleMeta, scriptPath, active, created)
+				targetEnv.ConfigDBConn.Exec("INSERT INTO _cron_jobs (name, schedule, schedule_meta, script_path, active, prevent_overlap, created) VALUES (?, ?, ?, ?, ?, ?, ?)",
+					name, schedule, scheduleMeta, scriptPath, active, preventOverlap, created)
 			}
 			rows.Close()
 		}
@@ -1726,11 +1735,11 @@ func (env *Environment) handleAdminCrons(w http.ResponseWriter, r *http.Request)
 		}
 		results := []map[string]any{}
 		for rows.Next() {
-			var id, active int
+			var id, active, preventOverlap int
 			var scheduleMeta sql.NullString
 			var name, schedule, scriptPath string
 			var createdRaw any
-			rows.Scan(&id, &name, &schedule, &scheduleMeta, &scriptPath, &active, &createdRaw)
+			rows.Scan(&id, &name, &schedule, &scheduleMeta, &scriptPath, &active, &preventOverlap, &createdRaw)
 
 			var created any = createdRaw
 			if b, ok := createdRaw.([]byte); ok {
@@ -1753,25 +1762,31 @@ func (env *Environment) handleAdminCrons(w http.ResponseWriter, r *http.Request)
 	}
 	if r.Method == "POST" {
 		var req struct {
-			ID           int    `json:"id"`
-			Name         string `json:"name"`
-			Schedule     string `json:"schedule"`
-			ScheduleMeta string `json:"schedule_meta"`
-			ScriptPath   string `json:"script_path"`
-			Active       bool   `json:"active"`
+			ID             int    `json:"id"`
+			Name           string `json:"name"`
+			Schedule       string `json:"schedule"`
+			ScheduleMeta   string `json:"schedule_meta"`
+			ScriptPath     string `json:"script_path"`
+			Active         bool   `json:"active"`
+			PreventOverlap bool   `json:"prevent_overlap"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
+		
 		activeInt := 0
 		if req.Active {
 			activeInt = 1
 		}
+		preventOverlapInt := 0
+		if req.PreventOverlap {
+			preventOverlapInt = 1
+		}
 
 		if req.ID > 0 {
-			env.ConfigDBConn.Exec("UPDATE _cron_jobs SET name=?, schedule=?, schedule_meta=?, script_path=?, active=? WHERE id=?",
-				req.Name, req.Schedule, req.ScheduleMeta, req.ScriptPath, activeInt, req.ID)
+			env.ConfigDBConn.Exec("UPDATE _cron_jobs SET name=?, schedule=?, schedule_meta=?, script_path=?, active=?, prevent_overlap=? WHERE id=?",
+				req.Name, req.Schedule, req.ScheduleMeta, req.ScriptPath, activeInt, preventOverlapInt, req.ID)
 		} else {
-			env.ConfigDBConn.Exec("INSERT INTO _cron_jobs (name, schedule, schedule_meta, script_path, active, created) VALUES (?, ?, ?, ?, ?, ?)",
-				req.Name, req.Schedule, req.ScheduleMeta, req.ScriptPath, activeInt, time.Now().Unix())
+			env.ConfigDBConn.Exec("INSERT INTO _cron_jobs (name, schedule, schedule_meta, script_path, active, prevent_overlap, created) VALUES (?, ?, ?, ?, ?, ?, ?)",
+				req.Name, req.Schedule, req.ScheduleMeta, req.ScriptPath, activeInt, preventOverlapInt, time.Now().Unix())
 		}
 		env.initCron()
 		w.Write([]byte(`{"success":true}`))
