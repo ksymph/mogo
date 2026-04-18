@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/go-co-op/gocron/v2"
 	lua "github.com/yuin/gopher-lua"
 	_ "modernc.org/sqlite"
@@ -2666,6 +2667,53 @@ func (env *Environment) initRoutes() {
 	env.RoutesMu.Unlock()
 }
 
+func (env *Environment) watchRoutes() {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Printf("Failed to create fsnotify watcher: %v", err)
+		return
+	}
+	defer watcher.Close()
+
+	// Walk through the routes directory and add all subdirectories to the watcher
+	err = filepath.Walk(env.RoutesPath, func(path string, info os.FileInfo, err error) error {
+		if err == nil && info.IsDir() {
+			watcher.Add(path)
+		}
+		return nil
+	})
+	if err != nil {
+		log.Printf("Failed to walk routes directory for watcher: %v", err)
+	}
+
+	for {
+		select {
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return
+			}
+			
+			// If a new directory is created, add it to the watcher dynamically
+			if event.Op&fsnotify.Create == fsnotify.Create {
+				if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
+					watcher.Add(event.Name)
+				}
+			}
+
+			// Reload routes on any relevant modification
+			if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Remove|fsnotify.Rename) != 0 {
+				env.initRoutes()
+			}
+			
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return
+			}
+			log.Printf("fsnotify watcher error: %v", err)
+		}
+	}
+}
+
 func (env *Environment) matchRoute(urlPath string) (*Route, map[string]string) {
 	env.RoutesMu.RLock()
 	defer env.RoutesMu.RUnlock()
@@ -3344,6 +3392,8 @@ func startStagingServer() {
 	StagingEnv.initRoutes()
 	StagingEnv.initLuaPool()
 	StagingEnv.initCron()
+	
+	go StagingEnv.watchRoutes()
 
 	stagingPort := appSettings.StagingPort
 	if stagingPort <= 0 {
@@ -3400,6 +3450,8 @@ func main() {
 
 	ProdEnv.initRoutes()
 	ProdEnv.initCron()
+	
+	go ProdEnv.watchRoutes()
 
 	go startServer(ProdEnv, appSettings.Port)
 
