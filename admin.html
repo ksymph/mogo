@@ -706,6 +706,17 @@
           html += `<div class="form-check"><label><span>${f.name}</span> <input type="checkbox" id="f_${f.name}" ${val === true || val === 1 || val === 'true' ? 'checked' : ''}></label></div>`;
         } else if (f.type === 'number') {
           html += `<div class="form-field"><input type="number" step="any" id="f_${f.name}" value="${val}" placeholder=" "><label>${f.name}</label></div>`;
+        } else if (f.type === 'file') {
+          html += `
+            <div class="hbox">
+              <div class="form-field" style="flex:1">
+                <input type="text" id="f_${f.name}" value="${val}" placeholder="">
+                <label>${f.name}</label>
+              </div>
+              <input type="file" id="file_picker_${f.name}" style="display:none" onchange="uploadCollectionFile('${f.name}', this)">
+              <button class="btn secondary" onclick="document.getElementById('file_picker_${f.name}').click()">Upload</button>
+            </div>
+          `;
         } else if (f.type && f.type.startsWith('relation:')) {
           let target = f.type.split(':')[1];
           html += `
@@ -765,6 +776,31 @@
       closeModal();
       viewCollection(state.sub);
     }
+    
+    window.uploadCollectionFile = async function(fieldName, inputEl) {
+      if (!inputEl.files || !inputEl.files.length) return;
+      const file = inputEl.files[0];
+      const formData = new FormData();
+      formData.append('path', ''); // root of uploads directory
+      formData.append('files', file);
+
+      const btn = inputEl.nextElementSibling;
+      const origText = btn.innerText;
+      btn.innerText = '...';
+      btn.disabled = true;
+
+      try {
+        await api(`/files?base=uploads`, { method: 'POST', body: formData });
+        // Set the text input to the path of the newly uploaded file
+        document.getElementById(`f_${fieldName}`).value = 'uploads/' + file.name;
+      } catch(e) {
+        alert('Upload failed: ' + e.message);
+      }
+      
+      btn.innerText = origText;
+      btn.disabled = false;
+      inputEl.value = ''; // clear the hidden file input
+    };
 
     function editSchemaModal(name = '') {
       const isNew = !name;
@@ -797,6 +833,7 @@
             <option value="string" ${baseType === 'string' ? 'selected' : ''}>String</option>
             <option value="number" ${baseType === 'number' ? 'selected' : ''}>Number</option>
             <option value="bool" ${baseType === 'bool' ? 'selected' : ''}>Bool</option>
+            <option value="file" ${baseType === 'file' ? 'selected' : ''}>File</option>
             <option value="relation" ${baseType === 'relation' ? 'selected' : ''}>Relation</option>
           </select>
           ${baseType === 'relation' ? `<select onchange="_tempSchema[${i}].type='relation:'+this.value">${allCols}</select>` : ''}

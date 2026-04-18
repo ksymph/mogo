@@ -1185,9 +1185,19 @@ func (env *Environment) handleAdminFilesRename(w http.ResponseWriter, r *http.Re
 	} else if req.Base == "schedules" {
 		baseDir = env.ScriptsPath
 		permKey = "schedules"
+	} else if req.Base == "uploads" {
+		baseDir = env.UploadsPath
+		permKey = "uploads"
 	}
 
-	if !hasPermission(r, permKey) {
+	if permKey == "uploads" {
+		p := getPermissions(r)
+		// Require at least some collection permissions to manipulate uploads
+		if p == nil || p["collections"] == nil {
+			http.Error(w, "Forbidden", 403)
+			return
+		}
+	} else if !hasPermission(r, permKey) {
 		http.Error(w, "Forbidden", 403)
 		return
 	}
@@ -2095,13 +2105,22 @@ func (env *Environment) handleAdminFiles(w http.ResponseWriter, r *http.Request)
 	if base == "routes" {
 		baseDir = env.RoutesPath
 		permKey = "routes"
-	}
-	if base == "schedules" {
+	} else if base == "schedules" {
 		baseDir = env.ScriptsPath
 		permKey = "schedules"
+	} else if base == "uploads" {
+		baseDir = env.UploadsPath
+		permKey = "uploads"
 	}
 
-	if !hasPermission(r, permKey) {
+	if permKey == "uploads" {
+		p := getPermissions(r)
+		// Require at least some collection permissions to upload
+		if p == nil || p["collections"] == nil {
+			http.Error(w, "Forbidden", 403)
+			return
+		}
+	} else if !hasPermission(r, permKey) {
 		http.Error(w, "Forbidden", 403)
 		return
 	}
