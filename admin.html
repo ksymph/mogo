@@ -432,23 +432,34 @@
       state.logs = logs; // save for viewing details
 
       let html = `<table class="data-table"><thead><tr>
-        <th>ID</th><th>Timestamp</th><th>Level</th><th>Origin</th><th>Script</th><th>Message</th>
+        <th style="width: 50px;">ID</th>
+        <th style="width: 180px;">Timestamp</th>
+        <th style="width: 80px;">Level</th>
+        <th style="width: 140px;">Origin</th>
+        <th style="width: 180px;">Script</th>
+        <th>Message</th>
       </tr></thead><tbody>`;
 
       if (logs.length === 0) {
         html += `<tr style="box-shadow: none;"><td colspan="6" style="text-align:center; padding: 2rem; cursor: default;">No logs found.</td></tr>`;
       } else {
         logs.forEach((l, idx) => {
-          let badgeColor = l.level === 'error' ? 'var(--fail)' : (l.level === 'warn' ? 'var(--warn)' : 'var(--success)');
-          let shortMsg = l.message ? (l.message.length > 60 ? l.message.substring(0, 60) + '...' : l.message) : '';
+          let badgeColor = l.level === 'error' ? 'var(--danger)' : (l.level === 'warn' ? 'var(--accent)' : 'var(--success, #10b981)');
+          
+          // Basic message truncation
+          let shortMsg = l.message ? (l.message.length > 100 ? l.message.substring(0, 100) + '...' : l.message) : '';
           shortMsg = shortMsg.replace(/</g, "&lt;");
+          
+          // Attempt to highlight the prepended contextual tag [like-this]
+          shortMsg = shortMsg.replace(/^\[([^\]]+)\]/, '<span style="color:var(--muted); margin-right:4px;">[$1]</span>');
+
           html += `<tr style="cursor:pointer" onclick="viewLogDetail(${idx})">
             <td>${l.id}</td>
             <td style="white-space:nowrap">${new Date(l.timestamp).toLocaleString()}</td>
-            <td><span style="background:${badgeColor};">${l.level}</span></td>
-            <td>${l.origin || ''}</td>
-            <td>${l.script_path || ''}</td>
-            <td style="max-width:300px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><code>${shortMsg}</code></td>
+            <td><span style="color:${badgeColor}; font-weight:bold;">${l.level.toUpperCase()}</span></td>
+            <td><code>${l.origin || ''}</code></td>
+            <td style="max-width:180px; overflow:hidden; text-overflow:ellipsis;">${l.script_path || ''}</td>
+            <td style="max-width:300px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${shortMsg}</td>
           </tr>`;
         });
       }
@@ -1096,7 +1107,11 @@ async function loadAppSettings() {
       
       <div class="modal">
         <h3>Logs</h3>
-        <div class="form-field"><input type="number" id="s-log-ret" value="${s.log_retention_days || 30}" placeholder=" "><label>Keep for (days)</label></div>
+        <div class="hbox">
+            <div class="form-field"><input type="number" id="s-log-ret" value="${s.log_retention_days || 30}" placeholder=" "><label>Keep for (days)</label></div>
+            <div class="form-field"><input type="number" id="s-log-max" value="${s.max_log_count_per_req || 100}" placeholder=" "><label>Max Logs Per Request</label></div>
+        </div>
+        <div class="hint">Prevents infinite loops from flooding the database.</div>
       </div>
 
       <div class="modal">
@@ -1191,6 +1206,7 @@ async function loadAppSettings() {
         rate_limit_burst: parseInt(document.getElementById('s-pub-burst').value, 10),
         admin_max_retries: parseInt(document.getElementById('s-adm-retries').value, 10),
         log_retention_days: parseInt(document.getElementById('s-log-ret').value, 10),
+        max_log_count_per_req: parseInt(document.getElementById('s-log-max').value, 10) || 100,
         unsafe_lua: document.getElementById('set_unsafe_lua').checked,
       };
       await api('/settings', { method: 'POST', body: payload });

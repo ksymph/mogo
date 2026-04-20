@@ -99,11 +99,12 @@ type Settings struct {
 	BackupSchedMeta string   `json:"backup_sched_meta"`
 
 	AllowedOrigins string  `json:"allowed_origins"`
-	RateLimitRPS   float64 `json:"rate_limit_rps"`
+	RateLimitRPS     float64 `json:"rate_limit_rps"`
 	RateLimitBurst int     `json:"rate_limit_burst"`
 	AdminMaxRetries int     `json:"admin_max_retries"`
 
 	LogRetentionDays int  `json:"log_retention_days"`
+	MaxLogCountPerReq int  `json:"max_log_count_per_req"`
 	UnsafeLua        bool `json:"unsafe_lua"`
 	Port             int  `json:"port"`
 
@@ -116,6 +117,7 @@ func loadSettings() {
 	appSettings.RateLimitBurst = 200
 	appSettings.AdminMaxRetries = 5
 	appSettings.LogRetentionDays = 30
+	appSettings.MaxLogCountPerReq = 100
 	appSettings.Port = 8080
 	appSettings.StagingPort = 8090
 	appSettings.StagingEnabled = false
@@ -419,7 +421,7 @@ func (env *Environment) initCron() {
 			if env.LogDBConn != nil {
 				_, err := env.LogDBConn.Exec(fmt.Sprintf("DELETE FROM _logs WHERE timestamp < datetime('now', '-%d days')", retention))
 				if err != nil {
-					env.appLog("error", "system", "cron", "Failed to prune logs: "+err.Error())
+					env.appLog("error", "system", "cron", "[system] Failed to prune logs: "+err.Error())
 				}
 			}
 		}),
@@ -546,13 +548,16 @@ func (env *Environment) runCronScript(scriptPath string) error {
 	top := L.GetTop()
 	defer L.SetTop(top)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	rl := &RequestLogger{Limit: appSettings.MaxLogCountPerReq, IP: "cron", Env: env}
+	ctx := context.WithValue(context.Background(), ctxKeyLogger{}, rl)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 	L.SetContext(ctx)
 	defer L.RemoveContext()
 
 	fn, err := L.LoadFile(scriptPath)
 	if err != nil {
+		rl.Log("error", scriptPath, "execution", err.Error())
 		log.Printf("Cron error loading %s: %v", scriptPath, err)
 		return err
 	}
@@ -565,6 +570,7 @@ func (env *Environment) runCronScript(scriptPath string) error {
 
 	L.Push(fn)
 	if err := L.PCall(0, 0, nil); err != nil {
+		rl.Log("error", scriptPath, "execution", err.Error())
 		log.Printf("Cron error running %s: %v", scriptPath, err)
 		return err
 	}
@@ -2872,18 +2878,24 @@ func (env *Environment) initLuaPool() {
 
 func (env *Environment) injectMgoAPI(L *lua.LState) {
 	logMod := L.NewTable()
-	L.SetField(logMod, "info", L.NewFunction(func(L *lua.LState) int {
-		env.appLog("info", getScript(L), "lua", L.CheckString(1))
-		return 0
-	}))
-	L.SetField(logMod, "warn", L.NewFunction(func(L *lua.LState) int {
-		env.appLog("warn", getScript(L), "lua", L.CheckString(1))
-		return 0
-	}))
-	L.SetField(logMod, "error", L.NewFunction(func(L *lua.LState) int {
-		env.appLog("error", getScript(L), "lua", L.CheckString(1))
-		return 0
-	}))
+	createLogFn := func(level string) *lua.LFunction {
+		return L.NewFunction(func(L *lua.LState) int {
+			ctx := L.Context()
+			if ctx != nil {
+				if rl, ok := ctx.Value(ctxKeyLogger{}).(*RequestLogger); ok {
+					rl.Log(level, getScript(L), "lua", L.CheckString(1))
+					return 0
+				}
+			}
+			// Fallback if no context
+			env.appLog(level, getScript(L), "system", "[lua] "+L.CheckString(1))
+			return 0
+		})
+	}
+
+	L.SetField(logMod, "info", createLogFn("info"))
+	L.SetField(logMod, "warn", createLogFn("warn"))
+	L.SetField(logMod, "error", createLogFn("error"))
 	L.SetField(logMod, "get", L.NewFunction(func(L *lua.LState) int {
 		limit := 1
 		argIdx := 1
@@ -3020,6 +3032,35 @@ func toLValue(L *lua.LState, val interface{}) lua.LValue {
 	}
 }
 
+type ctxKeyLogger struct{}
+
+type RequestLogger struct {
+	Count int
+	Limit int
+	IP    string
+	Env   *Environment
+	Mu    sync.Mutex
+}
+
+func (rl *RequestLogger) Log(level, scriptPath, contextStr, message string) {
+	if rl == nil {
+		return
+	}
+	rl.Mu.Lock()
+	defer rl.Mu.Unlock()
+
+	if rl.Limit > 0 && rl.Count > rl.Limit {
+		return
+	}
+	if rl.Limit > 0 && rl.Count == rl.Limit {
+		rl.Env.appLog("warn", scriptPath, rl.IP, "[system] Log limit reached for this request")
+		rl.Count++
+		return
+	}
+	rl.Count++
+	rl.Env.appLog(level, scriptPath, rl.IP, fmt.Sprintf("[%s] %s", contextStr, message))
+}
+
 func (env *Environment) mogoHandler(w http.ResponseWriter, r *http.Request) {
 	route, params := env.matchRoute(r.URL.Path)
 	if route == nil {
@@ -3030,7 +3071,9 @@ func (env *Environment) mogoHandler(w http.ResponseWriter, r *http.Request) {
 	L := env.LuaPool.Get().(*lua.LState)
 	top := L.GetTop()
 
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	rl := &RequestLogger{Limit: appSettings.MaxLogCountPerReq, IP: getIP(r), Env: env}
+	ctx := context.WithValue(r.Context(), ctxKeyLogger{}, rl)
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	L.SetContext(ctx)
 
 	handoff := false
@@ -3045,7 +3088,7 @@ func (env *Environment) mogoHandler(w http.ResponseWriter, r *http.Request) {
 
 	fn, err := L.LoadFile(route.FilePath)
 	if err != nil {
-		env.appLog("error", route.FilePath, "router", err.Error())
+		rl.Log("error", route.FilePath, "router", err.Error()) // <-- Changed
 		http.Error(w, "500 Internal Server Error", 500)
 		return
 	}
@@ -3058,7 +3101,7 @@ func (env *Environment) mogoHandler(w http.ResponseWriter, r *http.Request) {
 
 	L.Push(fn)
 	if err := L.PCall(0, 1, nil); err != nil {
-		env.appLog("error", route.FilePath, "execution", err.Error())
+		rl.Log("error", route.FilePath, "execution", err.Error()) // <-- Changed
 		http.Error(w, "500 Internal Server Error: execution failed", 500)
 		return
 	}
@@ -3159,7 +3202,7 @@ func (env *Environment) mogoHandler(w http.ResponseWriter, r *http.Request) {
 					if !appSettings.UnsafeLua {
 						absUploads, _ := filepath.Abs(env.UploadsPath)
 						if absTarget != absUploads && !strings.HasPrefix(absTarget, absUploads+string(filepath.Separator)) {
-							env.appLog("warn", getScript(L), "security", "Blocked attempt to write file outside uploads directory: "+destPath)
+							rl.Log("warn", getScript(L), "security", "Blocked attempt to write file outside uploads directory: "+destPath)
 							L.Push(lua.LBool(false))
 							L.Push(lua.LString("access denied: path escapes secure directory"))
 							return 2
@@ -3235,7 +3278,7 @@ func (env *Environment) mogoHandler(w http.ResponseWriter, r *http.Request) {
 	}, reqTable, resTable)
 
 	if err != nil {
-		env.appLog("error", route.FilePath, "execution", err.Error())
+		rl.Log("error", route.FilePath, "execution", err.Error())
 		http.Error(w, "500 Internal Server Error: execution failed", 500)
 		return
 	}
@@ -3325,13 +3368,14 @@ func (env *Environment) mogoHandler(w http.ResponseWriter, r *http.Request) {
 					env.LuaPool.Put(state)
 				}()
 
-				bgCtx, bgCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+				bgCtx := context.WithValue(context.Background(), ctxKeyLogger{}, rl)
+				bgCtx, bgCancel := context.WithTimeout(bgCtx, 5*time.Minute)
 				defer bgCancel()
 				state.SetContext(bgCtx)
 
 				state.Push(hook)
 				if err := state.PCall(0, 0, nil); err != nil {
-					env.appLog("error", rPath, "post-hook", err.Error())
+					rl.Log("error", rPath, "post-hook", err.Error()) // <-- Changed
 				}
 			}(L, postHook, top, route.FilePath)
 		}
