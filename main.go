@@ -855,7 +855,21 @@ func (env *Environment) expandRecord(colName string, row map[string]any, cache m
 	schema := env.getCollectionSchema(colName)
 
 	for _, sf := range schema {
-		if colSet[sf.Type] {
+		if sf.Type == "json" {
+			if forLua {
+				val := row[sf.Name]
+				if val == nil || val == "" {
+					continue
+				}
+				vStr := strings.TrimSpace(fmt.Sprintf("%v", val))
+				if vStr != "" && vStr != "nil" {
+					var parsed any
+					if err := json.Unmarshal([]byte(vStr), &parsed); err == nil {
+						out[sf.Name] = parsed
+					}
+				}
+			}
+		} else if colSet[sf.Type] {
 			val := row[sf.Name]
 			if val == nil || val == "" {
 				continue
@@ -2465,6 +2479,8 @@ func (env *Environment) injectDB(L *lua.LState) {
 			if limit > 0 {
 				limitClause = fmt.Sprintf("LIMIT %d", limit)
 			}
+
+			q := fmt.Sprintf("SELECT * FROM %s WHERE %s %s %s", cName, strings.Join(whereCols, " AND "), orderClause, limitClause)
 
 			colSet := env.getCollectionSet()
 			results, err := queryDB(env.DataDBConn, q, whereVals...)
