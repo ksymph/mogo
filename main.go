@@ -813,6 +813,130 @@ type SchemaField struct {
 	Required bool   `json:"required"`
 }
 
+func (env *Environment) getCollectionSet() map[string]bool {
+	colSet := make(map[string]bool)
+	rows, err := env.ConfigDBConn.Query("SELECT name FROM _collections")
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var n string
+			rows.Scan(&n)
+			colSet[n] = true
+		}
+	}
+	return colSet
+}
+
+func (env *Environment) expandRecord(colName string, row map[string]any, cache map[string]map[string]any, activePath map[string]bool, colSet map[string]bool, forLua bool) map[string]any {
+	idStr := fmt.Sprintf("%v", row["id"])
+	cacheKey := colName + ":" + idStr
+
+	if existing, ok := cache[cacheKey]; ok {
+		if activePath[cacheKey] && !forLua {
+			// JSON cycle break: return ID to prevent json.Marshal from panicking
+			return map[string]any{"id": row["id"]}
+		}
+		return existing
+	}
+
+	out := make(map[string]any)
+	for k, v := range row {
+		out[k] = v
+	}
+	cache[cacheKey] = out
+	activePath[cacheKey] = true
+
+	schema := env.getCollectionSchema(colName)
+
+	for _, sf := range schema {
+		if colSet[sf.Type] {
+			val := row[sf.Name]
+			if val == nil || val == "" {
+				continue
+			}
+			vStr := strings.TrimSpace(fmt.Sprintf("%v", val))
+			if vStr == "" || vStr == "nil" {
+				continue
+			}
+
+			var idList []any
+			isArray := strings.HasPrefix(vStr, "[")
+			if isArray {
+				if err := json.Unmarshal([]byte(vStr), &idList); err != nil {
+					idList = []any{vStr}
+					isArray = false
+				}
+			} else {
+				idList = []any{vStr}
+			}
+
+			var expanded []any
+			for _, relId := range idList {
+				relIdStr := fmt.Sprintf("%v", relId)
+				relCacheKey := sf.Type + ":" + relIdStr
+
+				if existing, ok := cache[relCacheKey]; ok {
+					if activePath[relCacheKey] && !forLua {
+						expanded = append(expanded, map[string]any{"id": relId})
+					} else {
+						expanded = append(expanded, existing)
+					}
+					continue
+				}
+
+				relRows, err := queryDB(env.DataDBConn, fmt.Sprintf("SELECT * FROM %s WHERE id = ?", sf.Type), relIdStr)
+				if err == nil && len(relRows) > 0 {
+					relExpanded := env.expandRecord(sf.Type, relRows[0], cache, activePath, colSet, forLua)
+					expanded = append(expanded, relExpanded)
+				} else {
+					expanded = append(expanded, relId)
+				}
+			}
+
+			if isArray {
+				out[sf.Name] = expanded
+			} else if len(expanded) > 0 {
+				out[sf.Name] = expanded[0]
+			}
+		}
+	}
+
+	delete(activePath, cacheKey)
+	return out
+}
+
+func toLValueCyclic(L *lua.LState, val interface{}, visited map[string]lua.LValue) lua.LValue {
+	if val == nil {
+		return lua.LNil
+	}
+	switch v := val.(type) {
+	case map[string]interface{}:
+		ptrStr := fmt.Sprintf("%p", v)
+		if tbl, ok := visited[ptrStr]; ok {
+			return tbl
+		}
+		tbl := L.NewTable()
+		visited[ptrStr] = tbl
+		for k, mapVal := range v {
+			tbl.RawSetString(k, toLValueCyclic(L, mapVal, visited))
+		}
+		return tbl
+	case []interface{}:
+		ptrStr := fmt.Sprintf("%p", v)
+		if tbl, ok := visited[ptrStr]; ok {
+			return tbl
+		}
+		tbl := L.NewTable()
+		visited[ptrStr] = tbl
+		for i, sliceVal := range v {
+			tbl.RawSetInt(i+1, toLValueCyclic(L, sliceVal, visited))
+		}
+		return tbl
+	default:
+		return toLValue(L, val)
+	}
+}
+
 func (env *Environment) getCollectionSchema(collection string) []SchemaField {
 	if cached, ok := env.SchemaCache.Load(collection); ok {
 		return cached.([]SchemaField)
@@ -1970,7 +2094,22 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 				http.Error(w, err.Error(), 500)
 				return
 			}
-			json.NewEncoder(w).Encode(map[string]interface{}{"items": items, "total": total})
+			
+			colSet := env.getCollectionSet()
+			cache := make(map[string]map[string]any)
+			var expandedItems []map[string]any
+			
+			for _, item := range items {
+				activePath := make(map[string]bool)
+				expanded := env.expandRecord(collection, item, cache, activePath, colSet, false)
+				expandedItems = append(expandedItems, expanded)
+			}
+			
+			if expandedItems == nil {
+				expandedItems = []map[string]any{} // ensure empty array instead of null
+			}
+			
+			json.NewEncoder(w).Encode(map[string]interface{}{"items": expandedItems, "total": total})
 			return
 		}
 		if r.Method == "POST" {
@@ -2321,127 +2460,21 @@ func (env *Environment) injectDB(L *lua.LState) {
 				limitClause = fmt.Sprintf("LIMIT %d", limit)
 			}
 
-			q := fmt.Sprintf("SELECT * FROM %s WHERE %s %s %s", cName, strings.Join(whereCols, " AND "), orderClause, limitClause)
-
-			tableCache := make(map[string]*lua.LTable)
-
-			colSet := make(map[string]bool)
-			rows, err := env.ConfigDBConn.Query("SELECT name FROM _collections")
-			if err == nil {
-				for rows.Next() {
-					var n string
-					rows.Scan(&n)
-					colSet[n] = true
-				}
-				rows.Close()
-			}
-
-			schemas := make(map[string][]SchemaField)
-			getSchema := func(c string) []SchemaField {
-				if s, ok := schemas[c]; ok {
-					return s
-				}
-				s := env.getCollectionSchema(c)
-				schemas[c] = s
-				return s
-			}
-
-			var buildRow func(colName string, row map[string]interface{}) *lua.LTable
-			var getRow func(colName string, idStr string) *lua.LTable
-
-			getRow = func(colName string, idStr string) *lua.LTable {
-				cacheKey := colName + ":" + idStr
-				if tbl, ok := tableCache[cacheKey]; ok {
-					return tbl
-				}
-				res, err := queryDB(env.DataDBConn, fmt.Sprintf("SELECT * FROM %s WHERE id = ?", colName), idStr)
-				if err != nil || len(res) == 0 {
-					return nil
-				}
-				return buildRow(colName, res[0])
-			}
-
-			buildRow = func(colName string, row map[string]interface{}) *lua.LTable {
-				idStr := fmt.Sprintf("%v", row["id"])
-				cacheKey := colName + ":" + idStr
-
-				if existing, ok := tableCache[cacheKey]; ok {
-					return existing
-				}
-
-				tbl := L.NewTable()
-				tableCache[cacheKey] = tbl
-
-				schema := getSchema(colName)
-
-				for k, v := range row {
-					if v == nil {
-						continue
-					}
-					var fType string
-					for _, sf := range schema {
-						if sf.Name == k {
-							fType = sf.Type
-							break
-						}
-					}
-
-					if fType != "" && colSet[fType] {
-						vStr := strings.TrimSpace(fmt.Sprintf("%v", v))
-						if vStr != "" && vStr != "nil" {
-							var idList []interface{}
-							isArray := strings.HasPrefix(vStr, "[")
-
-							if isArray {
-								if err := json.Unmarshal([]byte(vStr), &idList); err != nil {
-									idList = []interface{}{vStr}
-									isArray = false
-								}
-							} else {
-								idList = []interface{}{vStr}
-							}
-
-							if isArray {
-								relArr := L.NewTable()
-								arrIdx := 1
-								for _, relId := range idList {
-									relTbl := getRow(fType, fmt.Sprintf("%v", relId))
-									if relTbl != nil {
-										relArr.RawSetInt(arrIdx, relTbl)
-										arrIdx++
-									}
-								}
-								tbl.RawSetString(k, relArr)
-							} else {
-								relTbl := getRow(fType, fmt.Sprintf("%v", idList[0]))
-								if relTbl != nil {
-									tbl.RawSetString(k, relTbl)
-								} else {
-									tbl.RawSetString(k, toLValue(L, v))
-								}
-							}
-						} else {
-							tbl.RawSetString(k, toLValue(L, v))
-						}
-					} else {
-						tbl.RawSetString(k, toLValue(L, v))
-					}
-				}
-				return tbl
-			}
-
+			colSet := env.getCollectionSet()
 			results, err := queryDB(env.DataDBConn, q, whereVals...)
 			if err != nil {
 				L.Push(L.NewTable())
 				return 1
 			}
 
+			cache := make(map[string]map[string]any)
+			visitedLua := make(map[string]lua.LValue)
 			arr := L.NewTable()
+
 			for i, r := range results {
-				rowTbl := buildRow(cName, r)
-				if rowTbl != nil {
-					arr.RawSetInt(i+1, rowTbl)
-				}
+				activePath := make(map[string]bool)
+				expandedMap := env.expandRecord(cName, r, cache, activePath, colSet, true)
+				arr.RawSetInt(i+1, toLValueCyclic(L, expandedMap, visitedLua))
 			}
 
 			L.Push(arr)

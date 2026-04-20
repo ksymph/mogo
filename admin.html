@@ -719,15 +719,27 @@
           `;
         } else if (f.type && f.type.startsWith('relation:')) {
           let target = f.type.split(':')[1];
+          
+          let rawArr = [];
+          if (Array.isArray(val)) {
+              rawArr = val.map(v => typeof v === 'object' && v !== null ? v.id : v);
+          } else if (val != null) {
+              rawArr = [typeof val === 'object' && val !== null ? val.id : val];
+          }
+          
+          let displayVal = rawArr.join(', ');
+          let origType = Array.isArray(val) ? 'array' : 'single';
+          
           html += `
             <div class="hbox">
               <div class="form-field" style="flex:1">
-                <input type="text" id="f_${f.name}" value="${val}" placeholder="" readonly>
+                <input type="text" id="f_${f.name}" value="${displayVal}" placeholder="" readonly>
+                <input type="hidden" id="f_${f.name}_raw" value='${JSON.stringify(rawArr)}'>
+                <input type="hidden" id="f_${f.name}_type" value="${origType}">
                 <label>${f.name}</label>
               </div>
               <button class="btn secondary" onclick="openRelSelect('${f.name}', '${target}')">Select: ${target}</button>
             </div>
-            
           `;
         } else {
           let escapedVal = String(val).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -1396,11 +1408,23 @@ async function loadAppSettings() {
                 <tr onclick="selectRelItem('${fieldName}', '${itm.id}')" title="Select #${itm.id}">
                   ${cols.map(c => {
           let val = itm[c];
-          let sc = schema.find(s => s.name === c);
+          let sc = state.schema.find(s => s.name === c);
           if (sc && sc.type === 'bool') {
             if (val === undefined || val === null || val === '') return `<td></td>`;
             return `<td>${(val === true || val === 1 || val === 'true') ? 'true' : 'false'}</td>`;
           }
+          
+          // Handle Relational Fields (expanded objects/arrays)
+          if (sc && sc.type && sc.type.startsWith('relation:')) {
+              if (val === undefined || val === null || val === '') return `<td></td>`;
+              if (Array.isArray(val)) {
+                  let summaries = val.map(v => typeof v === 'object' && v !== null ? (v.name || v.title || v.id) : v);
+                  return `<td>[${summaries.join(', ')}]</td>`;
+              } else if (typeof val === 'object' && val !== null) {
+                  return `<td>${val.name || val.title || val.id}</td>`;
+              }
+          }
+
           return `<td>${val !== undefined && val !== null ? val : ''}</td>`;
         }).join('')}
                 </tr>
