@@ -871,52 +871,55 @@ func (env *Environment) expandRecord(colName string, row map[string]any, cache m
 			}
 		} else if colSet[sf.Type] {
 			val := row[sf.Name]
-			if val == nil || val == "" {
-				continue
-			}
-			vStr := strings.TrimSpace(fmt.Sprintf("%v", val))
-			if vStr == "" || vStr == "nil" {
+			if val == nil {
 				continue
 			}
 
-			var idList []any
-			isArray := strings.HasPrefix(vStr, "[")
-			if isArray {
-				if err := json.Unmarshal([]byte(vStr), &idList); err != nil {
-					idList = []any{vStr}
-					isArray = false
+			// The stored value should be an integer ID. Handle various numeric types from DB/JSON.
+			var relId int64
+			switch v := val.(type) {
+			case int64:
+				relId = v
+			case float64:
+				relId = int64(v)
+			case string: // For backward compatibility with old TEXT columns
+				parsed, err := strconv.ParseInt(v, 10, 64)
+				if err != nil {
+					continue // Not a valid ID string
+				}
+				relId = parsed
+			default:
+				continue // Unsupported type for a relation
+			}
+
+			if relId <= 0 { // IDs must be positive
+				continue
+			}
+
+			relIdStr := strconv.FormatInt(relId, 10)
+			relCacheKey := sf.Type + ":" + relIdStr
+
+			var expandedItem any
+			if existing, ok := cache[relCacheKey]; ok {
+				if activePath[relCacheKey] && !forLua {
+					expandedItem = map[string]any{"id": relId}
+				} else {
+					expandedItem = existing
 				}
 			} else {
-				idList = []any{vStr}
-			}
-
-			var expanded []any
-			for _, relId := range idList {
-				relIdStr := fmt.Sprintf("%v", relId)
-				relCacheKey := sf.Type + ":" + relIdStr
-
-				if existing, ok := cache[relCacheKey]; ok {
-					if activePath[relCacheKey] && !forLua {
-						expanded = append(expanded, map[string]any{"id": relId})
-					} else {
-						expanded = append(expanded, existing)
-					}
-					continue
-				}
-
-				relRows, err := queryDB(env.DataDBConn, fmt.Sprintf("SELECT * FROM %s WHERE id = ?", sf.Type), relIdStr)
+				// Query using the numeric ID for a precise match
+				relRows, err := queryDB(env.DataDBConn, fmt.Sprintf("SELECT * FROM %s WHERE id = ?", sf.Type), relId)
 				if err == nil && len(relRows) > 0 {
 					relExpanded := env.expandRecord(sf.Type, relRows[0], cache, activePath, colSet, forLua)
-					expanded = append(expanded, relExpanded)
+					expandedItem = relExpanded
 				} else {
-					expanded = append(expanded, relId)
+					// Fallback to the ID if the related record isn't found
+					expandedItem = relId
 				}
 			}
 
-			if isArray {
-				out[sf.Name] = expanded
-			} else if len(expanded) > 0 {
-				out[sf.Name] = expanded[0]
+			if expandedItem != nil {
+				out[sf.Name] = expandedItem
 			}
 		}
 	}
@@ -991,6 +994,8 @@ func (env *Environment) createCollectionInDB(name string, schema []SchemaField) 
 	}
 	collectionID, _ := res.LastInsertId()
 
+	colSet := env.getCollectionSet() // Get all known collection names
+
 	sqlFields := []string{"id INTEGER PRIMARY KEY AUTOINCREMENT", "created INTEGER", "updated INTEGER"}
 	for i, field := range schema {
 		sqlType := "TEXT"
@@ -999,6 +1004,11 @@ func (env *Environment) createCollectionInDB(name string, schema []SchemaField) 
 			sqlType = "REAL"
 		case "bool":
 			sqlType = "BOOLEAN"
+		default:
+			// If the field type is a known collection name, it's a relation
+			if _, ok := colSet[field.Type]; ok {
+				sqlType = "INTEGER"
+			}
 		}
 		env.ConfigDBConn.Exec("INSERT INTO _schema (collection_id, field, type, required, position) VALUES (?, ?, ?, ?, ?)",
 			collectionID, field.Name, field.Type, field.Required, i)
@@ -1028,6 +1038,7 @@ func (env *Environment) updateCollectionInDB(name string, schema []SchemaField) 
 		}
 	}
 
+	colSet := env.getCollectionSet() // Get all known collection names
 	newFields := make(map[string]bool)
 	for i, field := range schema {
 		newFields[field.Name] = true
@@ -1038,6 +1049,11 @@ func (env *Environment) updateCollectionInDB(name string, schema []SchemaField) 
 				sqlType = "REAL"
 			case "bool":
 				sqlType = "BOOLEAN"
+			default:
+				// If the field type is a known collection name, it's a relation
+				if _, ok := colSet[field.Type]; ok {
+					sqlType = "INTEGER"
+				}
 			}
 			env.DataDBConn.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", name, field.Name, sqlType))
 			env.ConfigDBConn.Exec("INSERT INTO _schema (collection_id, field, type, required, position) VALUES (?, ?, ?, ?, ?)",

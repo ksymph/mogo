@@ -616,7 +616,7 @@
       renderCollectionTable();
     }
 
-    function renderCollectionTable() {
+function renderCollectionTable() {
       const cols =['id', ...state.schema.map(s => s.name), 'created', 'updated'];
       document.getElementById('pane-header').innerHTML = `
       <h2>${state.sub}</h2>
@@ -649,20 +649,17 @@
           if (val === undefined || val === null || val === '') return `<td></td>`;
           return `<td>${(val === true || val === 1 || val === 'true') ? 'true' : 'false'}</td>`;
         }
-        if (sc && sc.type && sc.type.startsWith('relation:')) {
-            if (val === undefined || val === null || val === '') return `<td></td>`;
-            if (Array.isArray(val)) {
-                let summaries = val.map(v => typeof v === 'object' && v !== null ? (v.name || v.title || v.id) : v);
-                return `<td>${summaries.join(', ')}</td>`;
-            } else if (typeof val === 'object' && val !== null) {
-                return `<td>${val.name || val.title || val.id}</td>`;
-            }
+        // Handle expanded Relational Fields in the table view
+        if (sc && state.collections.some(col => col.name === sc.type)) {
+          if (val === undefined || val === null || val === '') return `<td></td>`;
+          if (typeof val === 'object' && val !== null) {
+            return `<td>${val.name || val.title || val.id || JSON.stringify(val)}</td>`;
+          }
         }
         return `<td>${val !== undefined && val !== null ? val : ''}</td>`;
       }).join('')}
       </tr>
     `).join('');
-
 
       document.getElementById('pane-content').innerHTML = `
       <div style="overflow-x:auto">
@@ -715,7 +712,7 @@
       }
     }
 
-    function itemModal(id = null) {
+function itemModal(id = null) {
       const item = id ? state.data.find(d => d.id == id) : {};
       let html = ``;
       state.schema.forEach(f => {
@@ -745,28 +742,23 @@
               <label>${f.name} (JSON)</label>
             </div>
           `;
-        } else if (f.type && f.type.startsWith('relation:')) {
-          let target = f.type.split(':')[1];
+        } else if (state.collections.some(c => c.name === f.type)) {
+          let target = f.type; // The type IS the target collection name
           
-          let rawArr = [];
-          if (Array.isArray(val)) {
-              rawArr = val.map(v => typeof v === 'object' && v !== null ? v.id : v);
-          } else if (val != null) {
-              rawArr = [typeof val === 'object' && val !== null ? val.id : val];
+          // Extract the raw ID out of the expanded object
+          let displayVal = val;
+          if (typeof val === 'object' && val !== null) {
+              displayVal = val.id;
           }
-          
-          let displayVal = rawArr.join(', ');
-          let origType = Array.isArray(val) ? 'array' : 'single';
           
           html += `
             <div class="hbox">
               <div class="form-field" style="flex:1">
-                <input type="text" id="f_${f.name}" value="${displayVal}" placeholder="" readonly>
-                <input type="hidden" id="f_${f.name}_raw" value='${JSON.stringify(rawArr)}'>
-                <input type="hidden" id="f_${f.name}_type" value="${origType}">
+                <input type="text" id="f_${f.name}" value="${displayVal !== undefined && displayVal !== null ? displayVal : ''}" placeholder="" readonly>
                 <label>${f.name}</label>
               </div>
               <button class="btn secondary" onclick="openRelSelect('${f.name}', '${target}')">Select: ${target}</button>
+              <button class="btn danger" style="padding: 0 0.75rem;" onclick="document.getElementById('f_${f.name}').value=''" title="Clear">✕</button>
             </div>
           `;
         } else {
@@ -797,7 +789,7 @@
       document.getElementById('modal').style.display = 'flex';
     }
 
-    async function saveItem(id) {
+async function saveItem(id) {
       let payload = {};
       let hasError = false;
       state.schema.forEach(f => {
@@ -819,16 +811,10 @@
               }
             }
             payload[f.name] = v; // pass it as a raw string
-          } else if (f.type && f.type.startsWith('relation:')) {
-            let rawInput = document.getElementById(`f_${f.name}_raw`);
-            let typeInput = document.getElementById(`f_${f.name}_type`);
-            if (rawInput) {
-                let arr = JSON.parse(rawInput.value);
-                let isArrayType = typeInput && typeInput.value === 'array';
-                if (arr.length === 0) payload[f.name] = null;
-                else if (arr.length === 1) payload[f.name] = isArrayType ? arr : arr[0];
-                else payload[f.name] = arr;
-            }
+          } else if (state.collections.some(c => c.name === f.type)) {
+            // Parse relation fields to Int
+            let v = parseInt(el.value, 10);
+            payload[f.name] = isNaN(v) ? null : v;
           } else {
             payload[f.name] = el.value;
           }
@@ -869,8 +855,18 @@
 
     function editSchemaModal(name = '') {
       const isNew = !name;
-      let schema = isNew ?[] : state.schema;
-      window._tempSchema = [...schema];
+      const schema = isNew ? [] : state.schema;
+
+      const allCollectionNames = new Set(state.collections.map(c => c.name));
+
+      // Convert schema from backend format (e.g., type: "users") to the UI's internal "relation:" format
+      window._tempSchema = schema.map(f => {
+        if (allCollectionNames.has(f.type)) {
+          return { ...f, type: `relation:${f.type}` };
+        }
+        return { ...f };
+      });
+
       window._tempColName = name || '';
 
       let isInitialRender = true;
@@ -894,7 +890,7 @@
         <div class="hbox schema-row" data-index="${i}" style="background: var(--card-bg)">
           <div class="handle" style="cursor:grab" onpointerdown="startDrag(event, ${i})">⣿</div>
           <div class="form-field" style="flex:1"><input value="${f.name}" onchange="_tempSchema[${i}].name=this.value" ${f.name === 'id' ? 'disabled' : ''} placeholder=" "><label>Field name</label></div>
-          <select onchange="if(this.value==='relation'){ _tempSchema[${i}].type='relation:'+(state.collections[0]?state.collections[0].name:''); } else { _tempSchema[${i}].type=this.value }; renderSchemaModal()" ${f.name === 'id' ? 'disabled' : ''}>
+          <select onchange="if(this.value==='relation'){ const firstCol = state.collections[0]; _tempSchema[${i}].type = firstCol ? 'relation:' + firstCol.name : 'relation:'; } else { _tempSchema[${i}].type=this.value }; renderSchemaModal()" ${f.name === 'id' ? 'disabled' : ''}>
             <option value="string" ${baseType === 'string' ? 'selected' : ''}>String</option>
             <option value="number" ${baseType === 'number' ? 'selected' : ''}>Number</option>
             <option value="bool" ${baseType === 'bool' ? 'selected' : ''}>Bool</option>
@@ -919,13 +915,26 @@
     }
 
     async function saveSchema(name) {
-      let schema = window._tempSchema.filter(f => f.name.trim() !== '');
+      // Filter out empty fields and transform the type for the backend
+      const schemaForBackend = window._tempSchema
+        .filter(f => f.name.trim() !== '')
+        .map(f => {
+          const newField = { ...f }; // Create a copy
+          if (newField.type && newField.type.startsWith('relation:')) {
+            newField.type = newField.type.split(':')[1];
+          }
+          return newField;
+        });
+
       let targetName = name;
       if (!name) {
         targetName = document.getElementById('col-name').value;
-        await api(`/collections`, { method: 'POST', body: { name: targetName, schema } });
+        if (!targetName) {
+            return alert('Collection name cannot be empty.');
+        }
+        await api(`/collections`, { method: 'POST', body: { name: targetName, schema: schemaForBackend } });
       } else {
-        await api(`/collections/${name}`, { method: 'PUT', body: { schema } });
+        await api(`/collections/${name}`, { method: 'PUT', body: { schema: schemaForBackend } });
       }
       closeModal();
       await loadCollections();
@@ -1436,27 +1445,13 @@ async function loadAppSettings() {
     }
 
     // ---------- relations nested modal ----------
-    let relSearchTimeout;
-    window.relModalOpen = false;
-    
+let relSearchTimeout;
     async function openRelSelect(fieldName, targetCol, search = '') {
-      if (!window.relModalOpen) {
-          window.relModalOpen = true;
-          let existing = document.getElementById(`f_${fieldName}_raw`);
-          try {
-              let arr = existing ? JSON.parse(existing.value) : [];
-              if (!Array.isArray(arr)) arr = arr != null ? [arr] : [];
-              window.currentRelSelection = new Set(arr.map(String));
-          } catch(e) {
-              window.currentRelSelection = new Set();
-          }
-      }
-
       document.getElementById('rel-modal-title').innerText = `Select ${fieldName} from ${targetCol}`;
       document.getElementById('rel-modal').style.display = 'flex';
 
       const res = await api(`/collections/${targetCol}?search=${encodeURIComponent(search)}`);
-      let items = res.items || [];
+      let items = res.items ||[];
 
       let html = `<div class="form-field">
         <input type="text" id="rel-search-inp" placeholder="" value="${search}" oninput="clearTimeout(relSearchTimeout); relSearchTimeout=setTimeout(()=>openRelSelect('${fieldName}', '${targetCol}', this.value), 300)">
@@ -1469,7 +1464,7 @@ async function loadAppSettings() {
         const colDef = state.collections.find(c => c.name === targetCol);
         let schema = colDef ? colDef.schema || [] : [];
         const cols =['id', ...schema.map(s => s.name)];
-        let ths = `<th style="width:40px; position: sticky; top: 0;"></th>` + cols.map(c => `<th style="position: sticky; top: 0;">${c}</th>`).join('');
+        let ths = cols.map(c => `<th style="position: sticky; top: 0;">${c}</th>`).join('');
 
         html += `<div style="width: 100%; overflow-x: auto; max-height: 480px; position: relative;">
           <table class="data-table">
@@ -1477,48 +1472,34 @@ async function loadAppSettings() {
               <tr>${ths}</tr>
             </thead>
             <tbody>
-              ${items.map(itm => {
-                let strId = String(itm.id);
-                let checked = window.currentRelSelection.has(strId) ? 'checked' : '';
-                return `
-                <tr onclick="toggleRelItem(event, '${itm.id}')" style="cursor:pointer" title="Toggle #${itm.id}">
-                  <td><input type="checkbox" style="pointer-events:none" ${checked}></td>
+              ${items.map(itm => `
+                <tr onclick="selectRelItem('${fieldName}', '${itm.id}')" title="Select #${itm.id}">
                   ${cols.map(c => {
-                    let val = itm[c];
-                    let sc = state.schema.find(s => s.name === c);
-                    if (sc && sc.type === 'bool') {
-                      if (val === undefined || val === null || val === '') return `<td></td>`;
-                      return `<td>${(val === true || val === 1 || val === 'true') ? 'true' : 'false'}</td>`;
-                    }
-                    
-                    // Handle Relational Fields (expanded objects/arrays)
-                    if (sc && sc.type && sc.type.startsWith('relation:')) {
-                        if (val === undefined || val === null || val === '') return `<td></td>`;
-                        if (Array.isArray(val)) {
-                            let summaries = val.map(v => typeof v === 'object' && v !== null ? (v.name || v.title || v.id) : v);
-                            return `<td>${summaries.join(', ')}</td>`;
-                        } else if (typeof val === 'object' && val !== null) {
-                            return `<td>${val.name || val.title || val.id}</td>`;
-                        }
-                    }
+          let val = itm[c];
+          let sc = state.schema.find(s => s.name === c);
+          if (sc && sc.type === 'bool') {
+            if (val === undefined || val === null || val === '') return `<td></td>`;
+            return `<td>${(val === true || val === 1 || val === 'true') ? 'true' : 'false'}</td>`;
+          }
+          
+          // Handle Relational Fields (expanded objects)
+          if (sc && state.collections.some(col => col.name === sc.type)) {
+              if (val === undefined || val === null || val === '') return `<td></td>`;
+              if (typeof val === 'object' && val !== null) {
+                  return `<td>${val.name || val.title || val.id || JSON.stringify(val)}</td>`;
+              }
+          }
 
-                    return `<td>${val !== undefined && val !== null ? val : ''}</td>`;
-                  }).join('')}
+          return `<td>${val !== undefined && val !== null ? val : ''}</td>`;
+        }).join('')}
                 </tr>
-              `}).join('')}
+              `).join('')}
             </tbody>
           </table>
         </div>`;
       }
 
-      html += `
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:1rem;">
-          <div id="rel-modal-counter" style="color:var(--muted); font-size:0.9rem; font-weight:bold;">${window.currentRelSelection.size} selected</div>
-          <div class="hbox">
-              <button class="btn" onclick="saveRelSelection('${fieldName}')">Save</button>
-              <button class="btn danger" onclick="closeRelModal()">Cancel</button>
-          </div>
-      </div>`;
+      html += `<button class="btn danger" onclick="closeModal()">Cancel</button>`;
 
       document.getElementById('rel-modal-body').innerHTML = html;
       setTimeout(() => {
@@ -1527,44 +1508,10 @@ async function loadAppSettings() {
       }, 50);
     }
 
-    window.toggleRelItem = function(event, id) {
-        if (event.target.tagName.toLowerCase() === 'input' && event.target.type === 'checkbox') {
-            event.preventDefault(); // Let the tr click handle the logic to prevent double toggling
-        }
-        
-        let strId = String(id);
-        if (window.currentRelSelection.has(strId)) {
-            window.currentRelSelection.delete(strId);
-        } else {
-            window.currentRelSelection.add(strId);
-        }
-        
-        let tr = event.currentTarget;
-        let cb = tr.querySelector('input[type="checkbox"]');
-        if (cb) cb.checked = window.currentRelSelection.has(strId);
-
-        let counter = document.getElementById('rel-modal-counter');
-        if (counter) counter.innerText = `${window.currentRelSelection.size} selected`;
-    }
-
-    window.saveRelSelection = function(fieldName) {
-        let arr = Array.from(window.currentRelSelection).map(id => {
-            let num = Number(id);
-            return isNaN(num) ? id : num;
-        });
-        
-        let rawInput = document.getElementById(`f_${fieldName}_raw`);
-        let displayInput = document.getElementById(`f_${fieldName}`);
-        
-        if (rawInput) rawInput.value = JSON.stringify(arr);
-        if (displayInput) displayInput.value = arr.join(', ');
-        
-        closeRelModal();
-    }
-
-    function closeRelModal() { 
-        window.relModalOpen = false;
-        document.getElementById('rel-modal').style.display = 'none'; 
+    function closeRelModal() { document.getElementById('rel-modal').style.display = 'none'; }
+    function selectRelItem(fieldName, id) {
+      document.getElementById(`f_${fieldName}`).value = id;
+      closeRelModal();
     }
 
 
