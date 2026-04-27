@@ -63,6 +63,15 @@
             stroke-linecap="round" stroke-linejoin="round" />
         </svg>
       </a>
+      <a href="?tab=middleware" class="icon-btn" onclick="handleNavClick(event, 'middleware')" title="Middleware">
+        <svg width="32px" height="32px" viewBox="0 0 24 24" stroke-width="1.5" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M8 10L8 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M16 10L16 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M12 22V16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M4 10H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M6 10V5C6 3.89543 6.89543 3 8 3H16C17.1046 3 18 3.89543 18 5V10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </a>
       <a href="?tab=public" class="icon-btn" onclick="handleNavClick(event, 'public')" title="Public">
         <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M7 18H10.5H14" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -561,7 +570,7 @@
       let iconBtn = document.querySelector(`.icon-btn[href="?tab=${tab}"]`);
       if (iconBtn) iconBtn.classList.add('active');
 
-      document.getElementById('sub-sidebar').style.display =['collections', 'routes', 'public', 'schedules', 'settings'].includes(tab) ? 'flex' : 'none';
+      document.getElementById('sub-sidebar').style.display =['collections', 'routes', 'middleware', 'public', 'schedules', 'settings'].includes(tab) ? 'flex' : 'none';
       document.getElementById('pane-header').style.display = 'flex';
       document.getElementById('pane-header').innerHTML = '';
       document.getElementById('pane-content').innerHTML = '';
@@ -571,7 +580,7 @@
       if (tab === 'settings') loadSettings('admin');
       if (tab === 'staging') loadStaging();
       if (tab === 'logs') loadLogs();
-      if (tab === 'routes' || tab === 'public' || tab === 'schedules') loadFiles(tab);
+      if (tab === 'routes' || tab === 'middleware' || tab === 'public' || tab === 'schedules') loadFiles(tab);
     }
 
     // ---------- collections ----------
@@ -853,9 +862,18 @@ async function saveItem(id) {
       inputEl.value = ''; // clear the hidden file input
     };
 
-    function editSchemaModal(name = '') {
+    async function editSchemaModal(name = '') {
       const isNew = !name;
+      const existingCol = name ? state.collections.find(c => c.name === name) : null;
       const schema = isNew ? [] : state.schema;
+
+      let middlewareFiles = null;
+      try {
+          const files = await api('/files?base=middleware');
+          middlewareFiles = files.filter(f => !f.is_dir).map(f => f.path);
+      } catch (e) {
+          // Ignore, user lacks routes permission, falls back to raw text input
+      }
 
       const allCollectionNames = new Set(state.collections.map(c => c.name));
 
@@ -868,11 +886,14 @@ async function saveItem(id) {
       });
 
       window._tempColName = name || '';
+      window._tempMiddlewareScript = existingCol ? (existingCol.middleware_script || '') : '';
 
       let isInitialRender = true;
       function render() {
         if (!isInitialRender && document.getElementById('col-name')) window._tempColName = document.getElementById('col-name').value;
+        if (!isInitialRender && document.getElementById('col-middleware')) window._tempMiddlewareScript = document.getElementById('col-middleware').value;
         isInitialRender = false;
+        
         let html = ``;
         if (isNew) html += `<div class="form-field"><input id="col-name" placeholder="" required value="${window._tempColName}"><label>Collection name</label></div>`;
 
@@ -903,8 +924,39 @@ async function saveItem(id) {
         </div>
       `}).join('');
         html += `</div>`;
-        html += `<div style="margin-top: 1rem;"><button class="btn" onclick="_tempSchema.push({name:'', type:'string'}); renderSchemaModal()">+ Add field</button></div>
-      <div style="margin-top: 1rem;"><button id="modal-confirm-btn" class="btn" onclick="saveSchema('${name}')">Save collection</button> <button class="btn danger" onclick="closeModal()">Cancel</button></div>`;
+        html += `<div style="margin-top: 1rem;"><button class="btn" onclick="_tempSchema.push({name:'', type:'string'}); renderSchemaModal()">+ Add field</button></div>`;
+
+        let mwWarning = '';
+        if (existingCol && existingCol.middleware_script) {
+            mwWarning = `<small style="color:var(--muted); font-size:0.8em; display:block; margin-top:2px;">Note: Due to system constraints, a script cannot be unassigned once attached, only swapped for another script.</small>`;
+        }
+
+        let mwHtml = '';
+        if (middlewareFiles !== null) {
+            let hasTruthyExisting = existingCol && existingCol.middleware_script;
+            mwHtml = `
+            <div class="form-field" style="margin-top: 1.5rem;">
+                <select id="col-middleware" onchange="window._tempMiddlewareScript = this.value">
+                    ${ !hasTruthyExisting ? '<option value="">-- None --</option>' : '' }
+                    ${ middlewareFiles.map(f => `<option value="${f}" ${window._tempMiddlewareScript === f ? 'selected' : ''}>${f}</option>`).join('') }
+                </select>
+                <label class="always-float">Middleware Script (Optional)</label>
+            </div>
+            ${mwWarning}
+            `;
+        } else {
+            mwHtml = `
+            <div class="form-field" style="margin-top: 1.5rem;">
+                <input id="col-middleware" value="${window._tempMiddlewareScript}" onchange="window._tempMiddlewareScript = this.value" placeholder=" ">
+                <label>Middleware Script (Optional)</label>
+            </div>
+            ${mwWarning}
+            `;
+        }
+        
+        html += mwHtml;
+
+        html += `<div style="margin-top: 1.5rem;"><button id="modal-confirm-btn" class="btn" onclick="saveSchema('${name}')">Save collection</button> <button class="btn danger" onclick="closeModal()">Cancel</button></div>`;
 
         document.getElementById('modal-title').innerText = `${isNew ? 'New' : 'Edit'} Collection`;
         document.getElementById('modal-body').innerHTML = html;
@@ -926,15 +978,17 @@ async function saveItem(id) {
           return newField;
         });
 
+      const middlewareScript = (document.getElementById('col-middleware') ? document.getElementById('col-middleware').value : window._tempMiddlewareScript) || "";
+
       let targetName = name;
       if (!name) {
         targetName = document.getElementById('col-name').value;
         if (!targetName) {
             return alert('Collection name cannot be empty.');
         }
-        await api(`/collections`, { method: 'POST', body: { name: targetName, schema: schemaForBackend } });
+        await api(`/collections`, { method: 'POST', body: { name: targetName, schema: schemaForBackend, middleware_script: middlewareScript } });
       } else {
-        await api(`/collections/${name}`, { method: 'PUT', body: { schema: schemaForBackend } });
+        await api(`/collections/${name}`, { method: 'PUT', body: { schema: schemaForBackend, middleware_script: middlewareScript } });
       }
       closeModal();
       await loadCollections();
@@ -1006,7 +1060,7 @@ async function saveItem(id) {
       </div>
               <hr>
       <div class="form-block">
-              <label class="form-check"><span>Routes</span><input type="checkbox" id="pk_routes"></label>
+              <label class="form-check"><span>Routes (Includes Middleware)</span><input type="checkbox" id="pk_routes"></label>
               <label class="form-check"><span>Schedules</span><input type="checkbox" id="pk_schedules"></label>
               <label class="form-check"><span>Public</span><input type="checkbox" id="pk_public"></label>
               <label class="form-check"><span>Settings</span><input type="checkbox" id="pk_settings"></label>
@@ -1649,7 +1703,7 @@ let relSearchTimeout;
       document.getElementById('sub-sidebar').innerHTML = subHtml;
       document.getElementById('pane-content').innerHTML = ``;
 
-      if (base === 'routes' || base === 'public') {
+      if (base === 'routes' || base === 'public' || base === 'middleware') {
         const title = base.charAt(0).toUpperCase() + base.slice(1);
         document.getElementById('pane-header').innerHTML = `<h2>${title}</h2>`;
       }
@@ -1847,7 +1901,7 @@ function showApiDocs() {
             <li><b>res.status</b> <i>(number)</i> - HTTP status code (default: 200)</li>
             <li><b>res.headers</b> <i>(table)</i> - Response headers</li>
             <li><b>res.body</b> <i>(string/table)</i> - Response body (setting this overrides returned data)</li>
-            <li><b>res.cookies.<i>name</i></b> <i>(table/string)</i> - Set cookies. Can be a string (value) or table with fields: <b>value</b>, <b>http_only</b>, <b>secure</b>, <b>max_age</b>, <b>delete</b></li>
+            <li><b>res.cookies.<i>name</i></b> <i>(table/string)</i> - Set cookies. Can be a string (value) or table with fields: <b>value</b>, <b>path</b>, <b>http_only</b>, <b>secure</b>, <b>max_age</b>, <b>same_site</b>, <b>delete</b></li>
             <li><b>res:file(path, <i>[filename]</i>)</b> - Sends a file as a download response</li>
         </ul>
     </div>
@@ -1865,10 +1919,20 @@ function showApiDocs() {
         <h5>db (Collections API)</h5>
         <ul>
             <li><b>db.&#60;col&#62;:get(<i>[query]</i>, <i>[limit]</i>, <i>[sort_by]</i>)</b> - Returns array of matching records, ascending by ID by default. Use <i>limit = 0</i> for no limit. Negative limit to reverse order. Relational fields expand automatically into nested tables.</li>
-            <li><b>db.&#60;col&#62;:insert(data)</b> - Inserts a row (auto-generates <i>id</i>, <i>created</i>, <i>updated</i>) and returns the new record's id.</li>
-            <li><b>db.&#60;col&#62;:update(query, updates)</b> - Updates matching records (set fields to <i>nil</i> to delete them). Returns <i>boolean</i> success.</li>
-            <li><b>db.&#60;col&#62;:delete(query)</b> - Deletes matching records. Returns <i>boolean</i> success.</li>
-            <li><b>db("SELECT * FROM tbl WHERE id = ?", id)</b> - Execute raw SQL. Returns a table for SELECT/PRAGMA, or <i>boolean, rowsAffected</i> for mutations.</li>
+            <li><b>db.&#60;col&#62;:insert(data)</b> - Inserts a row (auto-generates <i>id</i>, <i>created</i>, <i>updated</i>) and returns the new record's ID.</li>
+            <li><b>db.&#60;col&#62;:update(query, updates)</b> - Updates matching records. Processes sequentially; returns an array of result objects: <i>{{id=1, result=true}, {id=2, result=false, err="..."}}</i>.</li>
+            <li><b>db.&#60;col&#62;:delete(query)</b> - Deletes matching records. Processes sequentially; returns an array of result objects.</li>
+            <li><b>db("SELECT * FROM tbl WHERE id = ?", id)</b> - Execute raw SQL. Returns a table for SELECT/PRAGMA, or <i>boolean, rowsAffected</i> for mutations. <b>Bypasses all middleware hooks.</b></li>
+        </ul>
+    </div>
+    <div>
+        <h5>Collection Middleware</h5>
+        <p>Scripts in the <code>middleware/</code> directory can intercept DB operations. Return a table of hooks:</p>
+        <ul>
+            <li><b>pre_insert(data)</b> / <b>pre_update(item, data)</b> - Return modified data/true to proceed, or <i>nil, "Error"</i> to abort.</li>
+            <li><b>post_insert(item)</b> / <b>post_update(item, applied_data)</b> / <b>post_delete(item)</b> - Run after successful mutations.</li>
+            <li><b>pre_delete(item)</b> - Return <i>true</i> to proceed, or <i>nil, "Error"</i> to abort.</li>
+            <li><b>item(record)</b> - Formatter hook. Runs on every item retrieved via <i>db:get()</i> or expanded as a relation. Return modified record.</li>
         </ul>
     </div>
     <div>
@@ -1886,8 +1950,8 @@ function showApiDocs() {
         </ul>
     </div>
     <div>
-        <h5>Standard Libraries</h5>
-        <p>The standard Lua libraries <b>table</b>, <b>string</b>, <b>math</b>, and <b>coroutine</b> are fully available. The <b>os</b> library is restricted (dangerous functions stripped) and <b>io</b> is unavailable by default. Enabling <i>"Allow Unsafe Lua"</i> in the Admin Settings exposes the complete <b>io</b> and <b>debug</b> libraries.</p>
+        <h5>Standard Libraries & Security</h5>
+        <p>The standard Lua libraries <b>table</b>, <b>string</b>, <b>math</b>, and <b>coroutine</b> are fully available. The <b>os</b> library is restricted (dangerous functions stripped) and <b>io</b> is unavailable by default. Enabling <i>"Allow Unsafe Lua"</i> in the Admin Settings exposes the complete <b>io</b> and <b>debug</b> libraries and removes directory jailing for file operations.</p>
     </div>
 </div>
 
@@ -2024,6 +2088,17 @@ async function deleteFile(base, path) {
             indent = ' '.repeat(size);
           }
           let template = "return {\n\tGET = function(req)\n\t\treturn \"<h1>Hello, world!</h1>\"\n\tend\n}";
+          content = template.replace(/\t/g, indent);
+        } else if (base === 'middleware') {
+          let indent;
+          if (insertSpaces) {
+            indent = '\t';
+          } else {            
+            let size = parseInt(tabSize, 10);
+            if (isNaN(size)) size = 3;
+            indent = ' '.repeat(size);
+          }
+          let template = "return {\n\tpre_insert = function(req, item)\n\t\t-- Modify item before insert\n\t\treturn item\n\tend,\n\t\n\t-- post_update = function(req, item)\n\t-- \t\n\t-- end\n}";
           content = template.replace(/\t/g, indent);
         } else if (base === 'schedules') {
           content = "log.info(\"Hello, world!\")";

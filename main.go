@@ -33,49 +33,59 @@ import (
 var embedFS embed.FS
 
 var (
-	rootDir      string
-	appSettings  Settings
-	ProdEnv      *Environment
-	StagingEnv   *Environment
-	restoreMu    sync.Mutex
-	stagingMu    sync.Mutex
+	rootDir        string
+	appSettings    Settings
+	ProdEnv        *Environment
+	StagingEnv     *Environment
+	restoreMu      sync.Mutex
+	stagingMu      sync.Mutex
 	stagingStarted bool
 )
 
-type Environment struct {
-	IsStaging   bool
-	BaseDir     string
-	DataPath    string
-	PublicPath  string
-	RoutesPath  string
-	ScriptsPath string
-	UploadsPath string
+type middlewareCacheEntry struct {
+	Proto   *lua.FunctionProto
+	ModTime time.Time
+	Err     error
+}
 
-	ConfigDBConn *sql.DB
-	DataDBConn   *sql.DB
-	LogDBConn    *sql.DB
-	SchemaCache  sync.Map
-	Scheduler    gocron.Scheduler
-	LuaPool      *sync.Pool
-	Routes       []Route
-	RoutesMu     sync.RWMutex
+type Environment struct {
+	IsStaging      bool
+	BaseDir        string
+	DataPath       string
+	PublicPath     string
+	RoutesPath     string
+	ScriptsPath    string
+	UploadsPath    string
+	MiddlewarePath string
+
+	ConfigDBConn    *sql.DB
+	DataDBConn      *sql.DB
+	LogDBConn       *sql.DB
+	SchemaCache     sync.Map
+	Scheduler       gocron.Scheduler
+	LuaPool         *sync.Pool
+	Routes          []Route
+	RoutesMu        sync.RWMutex
+	middlewareCache sync.Map
 }
 
 func NewEnvironment(baseDir string, isStaging bool) *Environment {
 	env := &Environment{
-		IsStaging:   isStaging,
-		BaseDir:     baseDir,
-		DataPath:    filepath.Join(baseDir, "data"),
-		PublicPath:  filepath.Join(baseDir, "public"),
-		RoutesPath:  filepath.Join(baseDir, "routes"),
-		ScriptsPath: filepath.Join(baseDir, "scripts"),
-		UploadsPath: filepath.Join(baseDir, "uploads"),
+		IsStaging:      isStaging,
+		BaseDir:        baseDir,
+		DataPath:       filepath.Join(baseDir, "data"),
+		PublicPath:     filepath.Join(baseDir, "public"),
+		RoutesPath:     filepath.Join(baseDir, "routes"),
+		ScriptsPath:    filepath.Join(baseDir, "scripts"),
+		UploadsPath:    filepath.Join(baseDir, "uploads"),
+		MiddlewarePath: filepath.Join(baseDir, "middleware"),
 	}
 	os.MkdirAll(env.DataPath, os.ModePerm)
 	os.MkdirAll(env.ScriptsPath, os.ModePerm)
 	os.MkdirAll(env.RoutesPath, os.ModePerm)
 	os.MkdirAll(env.PublicPath, os.ModePerm)
 	os.MkdirAll(env.UploadsPath, os.ModePerm)
+	os.MkdirAll(env.MiddlewarePath, os.ModePerm)
 	return env
 }
 
@@ -98,15 +108,15 @@ type Settings struct {
 	BackupSched     string   `json:"backup_sched"`
 	BackupSchedMeta string   `json:"backup_sched_meta"`
 
-	AllowedOrigins string  `json:"allowed_origins"`
-	RateLimitRPS     float64 `json:"rate_limit_rps"`
-	RateLimitBurst int     `json:"rate_limit_burst"`
+	AllowedOrigins  string  `json:"allowed_origins"`
+	RateLimitRPS    float64 `json:"rate_limit_rps"`
+	RateLimitBurst  int     `json:"rate_limit_burst"`
 	AdminMaxRetries int     `json:"admin_max_retries"`
 
-	LogRetentionDays int  `json:"log_retention_days"`
+	LogRetentionDays  int  `json:"log_retention_days"`
 	MaxLogCountPerReq int  `json:"max_log_count_per_req"`
-	UnsafeLua        bool `json:"unsafe_lua"`
-	Port             int  `json:"port"`
+	UnsafeLua         bool `json:"unsafe_lua"`
+	Port              int  `json:"port"`
 
 	StagingEnabled bool `json:"staging_enabled"`
 	StagingPort    int  `json:"staging_port"`
@@ -214,7 +224,7 @@ func recordAdminAttempt(ip string, success bool) {
 
 func (env *Environment) initDB() {
 	var err error
-	
+
 	configPath := filepath.Join(env.DataPath, "config.sqlite")
 	env.ConfigDBConn, err = sql.Open("sqlite", configPath)
 	if err != nil {
@@ -334,6 +344,7 @@ func (env *Environment) initSystemTables() {
 	env.ConfigDBConn.Exec("ALTER TABLE _cron_jobs ADD COLUMN schedule_meta TEXT")
 	env.ConfigDBConn.Exec("ALTER TABLE _schema ADD COLUMN position INTEGER DEFAULT 0")
 	env.ConfigDBConn.Exec("ALTER TABLE _cron_jobs ADD COLUMN prevent_overlap BOOLEAN DEFAULT 0")
+	env.ConfigDBConn.Exec("ALTER TABLE _collections ADD COLUMN middleware_script TEXT DEFAULT ''")
 }
 
 func (env *Environment) initMasterKey() {
@@ -353,7 +364,7 @@ func (env *Environment) initMasterKey() {
 			Created:     time.Now().Unix(),
 		})
 		saveSettings(appSettings)
-		
+
 		// Generate a default .gitignore on fresh install
 		gitIgnorePath := filepath.Join(rootDir, ".gitignore")
 		if _, err := os.Stat(gitIgnorePath); os.IsNotExist(err) {
@@ -565,7 +576,7 @@ func (env *Environment) runCronScript(scriptPath string) error {
 	luaEnv := L.NewTable()
 	mt := L.NewTable()
 	L.SetField(mt, "__index", L.Get(lua.GlobalsIndex))
-	L.SetMetatable(luaEnv, mt)
+	L.SetMetatable(luaEnv, mt) 
 	fn.Env = luaEnv
 
 	L.Push(fn)
@@ -574,7 +585,7 @@ func (env *Environment) runCronScript(scriptPath string) error {
 		log.Printf("Cron error running %s: %v", scriptPath, err)
 		return err
 	}
-	
+
 	return nil
 }
 
@@ -669,7 +680,8 @@ func createBackup(destDir string, backupType string) error {
 		pathsToBackup[filepath.Join(rootDir, "routes")] = "routes"
 		pathsToBackup[filepath.Join(rootDir, "scripts")] = "scripts"
 		pathsToBackup[filepath.Join(rootDir, "public")] = "public"
-		pathsToBackup[filepath.Join(rootDir, ".gitignore")] = ".gitignore" // Added
+		pathsToBackup[filepath.Join(rootDir, "middleware")] = "middleware"
+		pathsToBackup[filepath.Join(rootDir, ".gitignore")] = ".gitignore"
 	case "complete":
 		fallthrough
 	default:
@@ -680,7 +692,8 @@ func createBackup(destDir string, backupType string) error {
 		pathsToBackup[filepath.Join(rootDir, "scripts")] = "scripts"
 		pathsToBackup[filepath.Join(rootDir, "public")] = "public"
 		pathsToBackup[filepath.Join(rootDir, "uploads")] = "uploads"
-		pathsToBackup[filepath.Join(rootDir, ".gitignore")] = ".gitignore" // Added
+		pathsToBackup[filepath.Join(rootDir, "middleware")] = "middleware"
+		pathsToBackup[filepath.Join(rootDir, ".gitignore")] = ".gitignore"
 	}
 
 	for source, prefix := range pathsToBackup {
@@ -833,7 +846,7 @@ func (env *Environment) getCollectionSet() map[string]bool {
 	return colSet
 }
 
-func (env *Environment) expandRecord(colName string, row map[string]any, cache map[string]map[string]any, activePath map[string]bool, colSet map[string]bool, forLua bool) map[string]any {
+func (env *Environment) expandRecord(colName string, row map[string]any, cache map[string]any, activePath map[string]bool, colSet map[string]bool, forLua bool, L *lua.LState) any {
 	idStr := fmt.Sprintf("%v", row["id"])
 	cacheKey := colName + ":" + idStr
 
@@ -910,8 +923,35 @@ func (env *Environment) expandRecord(colName string, row map[string]any, cache m
 				// Query using the numeric ID for a precise match
 				relRows, err := queryDB(env.DataDBConn, fmt.Sprintf("SELECT * FROM %s WHERE id = ?", sf.Type), relId)
 				if err == nil && len(relRows) > 0 {
-					relExpanded := env.expandRecord(sf.Type, relRows[0], cache, activePath, colSet, forLua)
-					expandedItem = relExpanded
+					relExpandedAny := env.expandRecord(sf.Type, relRows[0], cache, activePath, colSet, forLua, L)
+					expandedItem = relExpandedAny
+
+					if forLua && L != nil {
+						relHooks := env.loadMiddlewareHooks(L, sf.Type)
+						if relHooks != nil && relHooks.RawGetString("item").Type() == lua.LTFunction {
+							visited := make(map[string]lua.LValue)
+							itemLua := toLValueCyclic(L, relExpandedAny, visited)
+							rets, err := env.callMiddlewareHook(L, relHooks, "item", itemLua)
+
+							if err != nil {
+								env.logMiddlewareError(L, sf.Type, err)
+								expandedItem = nil
+							} else if len(rets) > 0 {
+								if rets[0] == lua.LNil {
+									errMsg := "unknown error"
+									if len(rets) > 1 && rets[1].Type() == lua.LTString {
+										errMsg = rets[1].String()
+									}
+									env.logMiddlewareError(L, sf.Type, errMsg)
+									expandedItem = nil
+								} else {
+									// Persist as raw LValue to avoid stripping custom metatables
+									expandedItem = rets[0]
+									cache[relCacheKey] = expandedItem
+								}
+							}
+						}
+					}
 				} else {
 					// Fallback to the ID if the related record isn't found
 					expandedItem = relId
@@ -931,6 +971,9 @@ func (env *Environment) expandRecord(colName string, row map[string]any, cache m
 func toLValueCyclic(L *lua.LState, val interface{}, visited map[string]lua.LValue) lua.LValue {
 	if val == nil {
 		return lua.LNil
+	}
+	if lv, ok := val.(lua.LValue); ok {
+		return lv
 	}
 	switch v := val.(type) {
 	case map[string]interface{}:
@@ -980,15 +1023,15 @@ func (env *Environment) getCollectionSchema(collection string) []SchemaField {
 	return schema
 }
 
-func (env *Environment) createCollectionInDB(name string, schema []SchemaField) error {
+func (env *Environment) createCollectionInDB(name string, schema []SchemaField, middlewareScript string) error {
 	var exists int
 	env.ConfigDBConn.QueryRow("SELECT COUNT(*) FROM _collections WHERE name = ?", name).Scan(&exists)
 	if exists > 0 {
 		return fmt.Errorf("collection already exists")
 	}
 
-	res, err := env.ConfigDBConn.Exec("INSERT INTO _collections (name, created, updated) VALUES (?, ?, ?)",
-		name, time.Now().Unix(), time.Now().Unix())
+	res, err := env.ConfigDBConn.Exec("INSERT INTO _collections (name, created, updated, middleware_script) VALUES (?, ?, ?, ?)",
+		name, time.Now().Unix(), time.Now().Unix(), middlewareScript)
 	if err != nil {
 		return err
 	}
@@ -1108,6 +1151,112 @@ func queryDB(db *sql.DB, query string, args ...interface{}) ([]map[string]interf
 	return results, nil
 }
 
+// Load middleware script and get hooks table (per-collection)
+func (env *Environment) loadMiddlewareHooks(L *lua.LState, collectionName string) *lua.LTable {
+	var scriptFile string
+	err := env.ConfigDBConn.QueryRow("SELECT middleware_script FROM _collections WHERE name = ?", collectionName).Scan(&scriptFile)
+	if err != nil || scriptFile == "" {
+		return nil
+	}
+	scriptPath := filepath.Join(env.MiddlewarePath, scriptFile)
+	info, statErr := os.Stat(scriptPath)
+	if statErr != nil {
+		return nil
+	}
+	modTime := info.ModTime()
+
+	// Check cache
+	if entry, ok := env.middlewareCache.Load(scriptPath); ok {
+		cached := entry.(*middlewareCacheEntry)
+		if cached.ModTime.Equal(modTime) {
+			if cached.Err != nil {
+				return nil
+			}
+			if cached.Proto != nil {
+				// Create closure from cached proto
+				fn := L.NewFunctionFromProto(cached.Proto)
+				L.Push(fn)
+				if err := L.PCall(0, 1, nil); err != nil {
+					return nil
+				}
+				ret := L.Get(-1)
+				L.Pop(1)
+				if ret.Type() == lua.LTTable {
+					return ret.(*lua.LTable)
+				}
+				return nil
+			}
+		}
+	}
+
+	// Load file, compile and cache proto
+	fn, err := L.LoadFile(scriptPath)
+	if err != nil {
+		env.middlewareCache.Store(scriptPath, &middlewareCacheEntry{Err: err, ModTime: modTime})
+		return nil
+	}
+	proto := fn.Proto
+	env.middlewareCache.Store(scriptPath, &middlewareCacheEntry{Proto: proto, ModTime: modTime})
+
+	// Execute to get hooks table
+	L.Push(fn)
+	if err := L.PCall(0, 1, nil); err != nil {
+		return nil
+	}
+	ret := L.Get(-1)
+	L.Pop(1)
+	if ret.Type() != lua.LTTable {
+		return nil
+	}
+	return ret.(*lua.LTable)
+}
+
+// Helper to call a middleware hook
+func (env *Environment) callMiddlewareHook(L *lua.LState, hooks *lua.LTable, hookName string, args ...lua.LValue) ([]lua.LValue, error) {
+	hookFn := hooks.RawGetString(hookName)
+	if hookFn.Type() != lua.LTFunction {
+		return nil, nil // hook not defined
+	}
+
+	topBefore := L.GetTop()
+
+	L.Push(hookFn)
+	for _, a := range args {
+		L.Push(a)
+	}
+	err := L.PCall(len(args), lua.MultRet, nil)
+	if err != nil {
+		return nil, fmt.Errorf("[middleware - %s] %s", hookName, err.Error())
+	}
+
+	topAfter := L.GetTop()
+	nret := topAfter - topBefore
+
+	var rets []lua.LValue
+	for i := 1; i <= nret; i++ {
+		rets = append(rets, L.Get(topBefore+i))
+	}
+	L.Pop(nret)
+
+	return rets, nil
+}
+
+func (env *Environment) logMiddlewareError(L *lua.LState, col string, err any) {
+	msg := fmt.Sprintf("[%s] item hook error: %v", col, err)
+	if L != nil {
+		ctx := L.Context()
+		if ctx != nil {
+			if rl, ok := ctx.Value(ctxKeyLogger{}).(*RequestLogger); ok {
+				rl.Log("error", getScript(L), "middleware", msg)
+				return
+			}
+		}
+		env.appLog("error", getScript(L), "middleware", msg)
+	} else {
+		env.appLog("error", "system", "middleware", msg)
+	}
+}
+
 // -----------------------------------------------------------------------------
 // 2. SECURITY & AUTH & ROUTING
 // -----------------------------------------------------------------------------
@@ -1116,14 +1265,14 @@ func setAuthCookie(w http.ResponseWriter, key string) {
 }
 
 func getIP(r *http.Request) string {
-    ip, _, err := net.SplitHostPort(r.RemoteAddr)
-    if err != nil {
-        ip = r.RemoteAddr
-    }
-    if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-        ip = strings.Split(fwd, ",")[0]
-    }
-    return strings.TrimSpace(ip)
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		ip = r.RemoteAddr
+	}
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		ip = strings.Split(fwd, ",")[0]
+	}
+	return strings.TrimSpace(ip)
 }
 
 func adminLockoutMiddleware(next http.HandlerFunc) http.HandlerFunc {
@@ -1173,7 +1322,7 @@ func (env *Environment) adminMiddleware(next http.HandlerFunc) http.HandlerFunc 
 		}
 
 		ip := getIP(r)
-		
+
 		var foundKey *ApiKey
 		for _, ak := range appSettings.ApiKeys {
 			if ak.Key == key {
@@ -1348,6 +1497,9 @@ func (env *Environment) handleAdminFilesRename(w http.ResponseWriter, r *http.Re
 	} else if req.Base == "uploads" {
 		baseDir = env.UploadsPath
 		permKey = "uploads"
+	} else if req.Base == "middleware" {
+		baseDir = env.MiddlewarePath
+		permKey = "routes" // fallback to routes perm for now, or settings
 	}
 
 	if permKey == "uploads" {
@@ -1563,7 +1715,7 @@ func (env *Environment) handleAdminBackupRestore(w http.ResponseWriter, r *http.
 		http.Error(w, "Backup file not found", 404)
 		return
 	}
-	
+
 	re := regexp.MustCompile(`_(\w+)\.zip$`)
 	matches := re.FindStringSubmatch(req.File)
 	if len(matches) < 2 {
@@ -1585,8 +1737,8 @@ func (env *Environment) handleAdminBackupRestore(w http.ResponseWriter, r *http.
 	// 2. Delete existing files based on backup type
 	pathsToClear := map[string][]string{
 		"content":  {"data/data.sqlite", "uploads"},
-		"template": {"data/config.sqlite", "data/settings.json", "routes", "scripts", "public"},
-		"complete": {"data/config.sqlite", "data/data.sqlite", "data/settings.json", "routes", "scripts", "public", "uploads"},
+		"template": {"data/config.sqlite", "data/settings.json", "routes", "scripts", "public", "middleware"},
+		"complete": {"data/config.sqlite", "data/data.sqlite", "data/settings.json", "routes", "scripts", "public", "uploads", "middleware"},
 	}
 	if paths, ok := pathsToClear[backupType]; ok {
 		for _, p := range paths {
@@ -1616,7 +1768,7 @@ func (env *Environment) handleAdminBackupRestore(w http.ResponseWriter, r *http.
 	ProdEnv.initDB()
 	ProdEnv.initRoutes()
 	ProdEnv.initCron()
-	
+
 	stagingMu.Lock()
 	stagingStarted = false // Allow staging to be restarted if needed
 	stagingMu.Unlock()
@@ -1669,6 +1821,10 @@ func (env *Environment) handleStagingSync(w http.ResponseWriter, r *http.Request
 		os.RemoveAll(targetEnv.RoutesPath)
 		copyDir(sourceEnv.RoutesPath, targetEnv.RoutesPath)
 		targetEnv.initRoutes()
+
+		// Also sync middleware when syncing routes logically (or schemas, but this is fine)
+		os.RemoveAll(targetEnv.MiddlewarePath)
+		copyDir(sourceEnv.MiddlewarePath, targetEnv.MiddlewarePath)
 	}
 	if req.Schedules {
 		os.RemoveAll(targetEnv.ScriptsPath)
@@ -1715,20 +1871,28 @@ func (env *Environment) handleStagingSync(w http.ResponseWriter, r *http.Request
 		targetEnv.ConfigDBConn.Exec("DELETE FROM _collections")
 		targetEnv.ConfigDBConn.Exec("DELETE FROM _schema")
 
-		var collections []string
-		rows, _ := sourceEnv.ConfigDBConn.Query("SELECT name FROM _collections ORDER BY id ASC")
+		var collections []struct {
+			Name             string
+			MiddlewareScript string
+		}
+		rows, _ := sourceEnv.ConfigDBConn.Query("SELECT name, middleware_script FROM _collections ORDER BY id ASC")
 		if rows != nil {
 			for rows.Next() {
-				var name string
-				rows.Scan(&name)
-				collections = append(collections, name)
+				var c struct {
+					Name             string
+					MiddlewareScript string
+				}
+				var ms sql.NullString
+				rows.Scan(&c.Name, &ms)
+				c.MiddlewareScript = ms.String
+				collections = append(collections, c)
 			}
 			rows.Close()
 		}
 
-		for _, cName := range collections {
-			schema := sourceEnv.getCollectionSchema(cName)
-			targetEnv.createCollectionInDB(cName, schema)
+		for _, c := range collections {
+			schema := sourceEnv.getCollectionSchema(c.Name)
+			targetEnv.createCollectionInDB(c.Name, schema, c.MiddlewareScript)
 		}
 
 		targetDBPath := filepath.Join(targetEnv.DataPath, "data.sqlite")
@@ -1737,8 +1901,8 @@ func (env *Environment) handleStagingSync(w http.ResponseWriter, r *http.Request
 			defer conn.Close()
 			_, err = conn.ExecContext(r.Context(), fmt.Sprintf("ATTACH DATABASE '%s' AS target_db", targetDBPath))
 			if err == nil {
-				for _, cName := range collections {
-					conn.ExecContext(r.Context(), fmt.Sprintf("INSERT INTO target_db.%s SELECT * FROM main.%s", cName, cName))
+				for _, c := range collections {
+					conn.ExecContext(r.Context(), fmt.Sprintf("INSERT INTO target_db.%s SELECT * FROM main.%s", c.Name, c.Name))
 				}
 				conn.ExecContext(r.Context(), "DETACH DATABASE target_db")
 			}
@@ -1799,7 +1963,7 @@ func (env *Environment) handleAdminKeys(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	if r.Method == "GET" {
 		if appSettings.ApiKeys == nil {
 			json.NewEncoder(w).Encode([]ApiKey{})
@@ -1842,7 +2006,7 @@ func (env *Environment) handleAdminKeys(w http.ResponseWriter, r *http.Request) 
 		b := make([]byte, 16)
 		crand.Read(b)
 		newKey := "sk_" + hex.EncodeToString(b)
-		
+
 		maxID := 0
 		for _, ak := range appSettings.ApiKeys {
 			if ak.ID > maxID {
@@ -1865,7 +2029,7 @@ func (env *Environment) handleAdminKeys(w http.ResponseWriter, r *http.Request) 
 	if r.Method == "DELETE" {
 		idStr := r.URL.Query().Get("id")
 		id, _ := strconv.Atoi(idStr)
-		
+
 		var newKeys []ApiKey
 		for _, ak := range appSettings.ApiKeys {
 			if ak.ID != id {
@@ -1890,16 +2054,16 @@ func (env *Environment) handleAdminCrons(w http.ResponseWriter, r *http.Request)
 		defer rows.Close()
 		nextRuns := make(map[int]string)
 		if env.Scheduler != nil {
-			 for _, job := range env.Scheduler.Jobs() {
-				  tags := job.Tags()
-				  if len(tags) > 0 {
-				      if jID, err := strconv.Atoi(tags[0]); err == nil {
-				          if nr, err := job.NextRun(); err == nil {
-				              nextRuns[jID] = nr.Format(time.RFC3339)
-				          }
-				      }
-				  }
-			 }
+			for _, job := range env.Scheduler.Jobs() {
+				tags := job.Tags()
+				if len(tags) > 0 {
+					if jID, err := strconv.Atoi(tags[0]); err == nil {
+						if nr, err := job.NextRun(); err == nil {
+							nextRuns[jID] = nr.Format(time.RFC3339)
+						}
+					}
+				}
+			}
 		}
 		results := []map[string]any{}
 		for rows.Next() {
@@ -1939,7 +2103,7 @@ func (env *Environment) handleAdminCrons(w http.ResponseWriter, r *http.Request)
 			PreventOverlap bool   `json:"prevent_overlap"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
-		
+
 		activeInt := 0
 		if req.Active {
 			activeInt = 1
@@ -2037,7 +2201,7 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 				for i, col := range cols {
 					row[col] = vals[i]
 				}
-				
+
 				cName := row["name"].(string)
 				if hasCollectionPermission(r, cName, "item") || hasCollectionPermission(r, cName, "schema") {
 					row["schema"] = env.getCollectionSchema(cName)
@@ -2049,15 +2213,16 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 		}
 		if r.Method == "POST" {
 			var req struct {
-				Name   string        `json:"name"`
-				Schema []SchemaField `json:"schema"`
+				Name             string        `json:"name"`
+				Schema           []SchemaField `json:"schema"`
+				MiddlewareScript string        `json:"middleware_script"`
 			}
 			json.NewDecoder(r.Body).Decode(&req)
 			if !hasCollectionPermission(r, req.Name, "schema") {
 				http.Error(w, "Forbidden", 403)
 				return
 			}
-			if err := env.createCollectionInDB(req.Name, req.Schema); err != nil {
+			if err := env.createCollectionInDB(req.Name, req.Schema, req.MiddlewareScript); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
@@ -2130,21 +2295,23 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 				http.Error(w, err.Error(), 500)
 				return
 			}
-			
+
 			colSet := env.getCollectionSet()
-			cache := make(map[string]map[string]any)
+			cache := make(map[string]any)
 			var expandedItems []map[string]any
-			
+
 			for _, item := range items {
 				activePath := make(map[string]bool)
-				expanded := env.expandRecord(collection, item, cache, activePath, colSet, false)
-				expandedItems = append(expandedItems, expanded)
+				expanded := env.expandRecord(collection, item, cache, activePath, colSet, false, nil)
+				if m, ok := expanded.(map[string]any); ok {
+					expandedItems = append(expandedItems, m)
+				}
 			}
-			
+
 			if expandedItems == nil {
 				expandedItems = []map[string]any{} // ensure empty array instead of null
 			}
-			
+
 			json.NewEncoder(w).Encode(map[string]interface{}{"items": expandedItems, "total": total})
 			return
 		}
@@ -2186,12 +2353,16 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 				return
 			}
 			var req struct {
-				Schema []SchemaField `json:"schema"`
+				Schema           []SchemaField `json:"schema"`
+				MiddlewareScript string        `json:"middleware_script"`
 			}
 			json.NewDecoder(r.Body).Decode(&req)
 			if err := env.updateCollectionInDB(collection, req.Schema); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
+			}
+			if req.MiddlewareScript != "" {
+				env.ConfigDBConn.Exec("UPDATE _collections SET middleware_script = ? WHERE name = ?", req.MiddlewareScript, collection)
 			}
 			w.Write([]byte(`{"success":true}`))
 			return
@@ -2286,6 +2457,9 @@ func (env *Environment) handleAdminFiles(w http.ResponseWriter, r *http.Request)
 	} else if base == "uploads" {
 		baseDir = env.UploadsPath
 		permKey = "uploads"
+	} else if base == "middleware" {
+		baseDir = env.MiddlewarePath
+		permKey = "routes" // Defaulting to routes permission for middleware access
 	}
 
 	if permKey == "uploads" {
@@ -2442,6 +2616,8 @@ func (env *Environment) injectDB(L *lua.LState) {
 		colTbl.RawSetString("get", L.NewFunction(func(L *lua.LState) int {
 			cName := L.CheckTable(1).RawGetString("_name").String()
 
+			hooks := env.loadMiddlewareHooks(L, cName)
+
 			whereVals := []any{}
 			whereCols := []string{"1=1"}
 
@@ -2505,14 +2681,81 @@ func (env *Environment) injectDB(L *lua.LState) {
 				return 1
 			}
 
-			cache := make(map[string]map[string]any)
+			cache := make(map[string]any)
 			visitedLua := make(map[string]lua.LValue)
 			arr := L.NewTable()
+			errorsTbl := L.NewTable()
+			hasErrors := false
+			itemCount := 0
 
-			for i, r := range results {
+			for _, r := range results {
 				activePath := make(map[string]bool)
-				expandedMap := env.expandRecord(cName, r, cache, activePath, colSet, true)
-				arr.RawSetInt(i+1, toLValueCyclic(L, expandedMap, visitedLua))
+				expanded := env.expandRecord(cName, r, cache, activePath, colSet, true, L)
+
+				if lv, ok := expanded.(lua.LValue); ok {
+					itemCount++
+					arr.RawSetInt(itemCount, lv)
+					continue
+				}
+
+				expandedMap := expanded.(map[string]any)
+
+				// Apply item hook for this top-level collection
+				if hooks != nil && hooks.RawGetString("item").Type() == lua.LTFunction {
+					visited := make(map[string]lua.LValue)
+					itemLua := toLValueCyclic(L, expandedMap, visited)
+					rets, err := env.callMiddlewareHook(L, hooks, "item", itemLua)
+
+					if err != nil {
+						env.logMiddlewareError(L, cName, err)
+
+						errObj := L.NewTable()
+						errObj.RawSetString("id", toLValue(L, r["id"]))
+						errObj.RawSetString("err", lua.LString(err.Error()))
+						errorsTbl.Append(errObj)
+						hasErrors = true
+						continue
+					} else if len(rets) > 0 {
+						if rets[0] == lua.LNil {
+							errMsg := "unknown error"
+							if len(rets) > 1 && rets[1].Type() == lua.LTString {
+								errMsg = rets[1].String()
+							}
+							env.logMiddlewareError(L, cName, errMsg)
+
+							errObj := L.NewTable()
+							errObj.RawSetString("id", toLValue(L, r["id"]))
+							errObj.RawSetString("err", lua.LString(errMsg))
+							errorsTbl.Append(errObj)
+							hasErrors = true
+							continue
+						} else {
+							cache[cName+":"+fmt.Sprintf("%v", r["id"])] = rets[0]
+							itemCount++
+							arr.RawSetInt(itemCount, rets[0])
+						}
+					} else {
+						lv := toLValueCyclic(L, expandedMap, visitedLua)
+						cache[cName+":"+fmt.Sprintf("%v", r["id"])] = lv
+						itemCount++
+						arr.RawSetInt(itemCount, lv)
+					}
+				} else {
+					lv := toLValueCyclic(L, expandedMap, visitedLua)
+					cache[cName+":"+fmt.Sprintf("%v", r["id"])] = lv
+					itemCount++
+					arr.RawSetInt(itemCount, lv)
+				}
+			}
+
+			if hasErrors {
+				if itemCount == 0 {
+					L.Push(lua.LNil)
+				} else {
+					L.Push(arr)
+				}
+				L.Push(errorsTbl)
+				return 2
 			}
 
 			L.Push(arr)
@@ -2537,6 +2780,38 @@ func (env *Environment) injectDB(L *lua.LState) {
 				data["updated"] = now
 			}
 
+			hooks := env.loadMiddlewareHooks(L, cName)
+
+			if hooks != nil {
+				// pre_insert
+				if hooks.RawGetString("pre_insert").Type() == lua.LTFunction {
+					dataLua := toLValue(L, data)
+					rets, err := env.callMiddlewareHook(L, hooks, "pre_insert", dataLua)
+					if err != nil {
+						L.Push(lua.LNil)
+						L.Push(lua.LString(err.Error()))
+						return 2
+					}
+					if len(rets) >= 1 && rets[0] != lua.LNil {
+						newData, ok := luaValueToInterface(rets[0]).(map[string]any)
+						if !ok {
+							L.Push(lua.LNil)
+							L.Push(lua.LString("[middleware - pre_insert] returned invalid data"))
+							return 2
+						}
+						data = newData
+					} else {
+						errMsg := "[middleware - pre_insert] aborted"
+						if len(rets) >= 2 && rets[1].Type() == lua.LTString {
+							errMsg = "[middleware - pre_insert] " + rets[1].String()
+						}
+						L.Push(lua.LNil)
+						L.Push(lua.LString(errMsg))
+						return 2
+					}
+				}
+			}
+
 			cols, placeholders, args := []string{}, []string{}, []any{}
 			for k, v := range data {
 				cols = append(cols, k)
@@ -2556,6 +2831,30 @@ func (env *Environment) injectDB(L *lua.LState) {
 				return 2
 			}
 			id, _ := res.LastInsertId()
+
+			// post_insert
+			if hooks != nil && hooks.RawGetString("post_insert").Type() == lua.LTFunction {
+				items, _ := queryDB(env.DataDBConn, "SELECT * FROM "+cName+" WHERE id = ?", id)
+				if len(items) == 0 {
+					L.Push(lua.LNil)
+					L.Push(lua.LString("[middleware - post_insert] could not retrieve item"))
+					return 2
+				}
+				itemLua := toLValue(L, items[0])
+				rets, err := env.callMiddlewareHook(L, hooks, "post_insert", itemLua)
+				if err != nil {
+					L.Push(lua.LNil)
+					L.Push(lua.LString(err.Error()))
+					return 2
+				}
+				if len(rets) == 0 {
+					L.Push(lua.LNumber(id))
+				} else {
+					L.Push(rets[0])
+				}
+				return 1
+			}
+
 			L.Push(lua.LNumber(id))
 			return 1
 		}))
@@ -2568,35 +2867,139 @@ func (env *Environment) injectDB(L *lua.LState) {
 
 			updateMap["updated"] = time.Now().Unix()
 
+			hooks := env.loadMiddlewareHooks(L, cName)
+
+			// Fetch matching IDs
 			whereVals, whereCols := []any{}, []string{"1=1"}
 			for k, v := range queryMap {
 				whereCols = append(whereCols, fmt.Sprintf("%s = ?", k))
 				whereVals = append(whereVals, v)
 			}
-
-			setCols, setVals := []string{}, []any{}
-			for k, v := range updateMap {
-				if k == "id" || k == "created" {
-					continue
-				}
-				setCols = append(setCols, fmt.Sprintf("%s = ?", k))
-				switch val := v.(type) {
-				case map[string]any, []any:
-					setVals = append(setVals, formatLuaTable(val))
-				default:
-					setVals = append(setVals, v)
-				}
-			}
-
-			q := fmt.Sprintf("UPDATE %s SET %s WHERE %s", cName, strings.Join(setCols, ", "), strings.Join(whereCols, " AND "))
-			args := append(setVals, whereVals...)
-			_, err := env.DataDBConn.Exec(q, args...)
+			selectQ := fmt.Sprintf("SELECT id FROM %s WHERE %s", cName, strings.Join(whereCols, " AND "))
+			rows, err := env.DataDBConn.Query(selectQ, whereVals...)
 			if err != nil {
 				L.Push(lua.LBool(false))
 				L.Push(lua.LString(err.Error()))
 				return 2
 			}
-			L.Push(lua.LBool(true))
+			var ids []int64
+			for rows.Next() {
+				var id int64
+				if err := rows.Scan(&id); err == nil {
+					ids = append(ids, id)
+				}
+			}
+			rows.Close()
+
+			results := L.NewTable()
+			for _, id := range ids {
+				resultObj := L.NewTable()
+				resultObj.RawSetString("id", lua.LNumber(id))
+
+				// Fetch original item
+				origItems, err := queryDB(env.DataDBConn, "SELECT * FROM "+cName+" WHERE id = ?", id)
+				if err != nil || len(origItems) == 0 {
+					resultObj.RawSetString("result", lua.LBool(false))
+					resultObj.RawSetString("err", lua.LString("item not found"))
+					results.Append(resultObj)
+					continue
+				}
+				origItem := origItems[0]
+
+				mergedData := updateMap
+				// pre_update
+				if hooks != nil && hooks.RawGetString("pre_update").Type() == lua.LTFunction {
+					origLua := toLValue(L, origItem)
+					dataLua := toLValue(L, updateMap)
+					rets, err := env.callMiddlewareHook(L, hooks, "pre_update", origLua, dataLua)
+					if err != nil {
+						resultObj.RawSetString("result", lua.LBool(false))
+						resultObj.RawSetString("err", lua.LString(err.Error()))
+						results.Append(resultObj)
+						continue
+					}
+					if len(rets) >= 1 && rets[0] != lua.LNil {
+						// new item / all good, check if second is data
+						if len(rets) >= 2 && rets[1].Type() == lua.LTTable {
+							newData, _ := luaValueToInterface(rets[1]).(map[string]any)
+							mergedData = newData
+						} else if len(rets) >= 2 && rets[1] == lua.LNil {
+							errMsg := "[middleware - pre_update] aborted"
+							if len(rets) >= 3 && rets[2].Type() == lua.LTString {
+								errMsg = "[middleware - pre_update] " + rets[2].String()
+							}
+							resultObj.RawSetString("result", lua.LBool(false))
+							resultObj.RawSetString("err", lua.LString(errMsg))
+							results.Append(resultObj)
+							continue
+						}
+					} else {
+						errMsg := "[middleware - pre_update] aborted"
+						if len(rets) >= 2 && rets[1].Type() == lua.LTString {
+							errMsg = "[middleware - pre_update] " + rets[1].String()
+						}
+						resultObj.RawSetString("result", lua.LBool(false))
+						resultObj.RawSetString("err", lua.LString(errMsg))
+						results.Append(resultObj)
+						continue
+					}
+				}
+
+				// Perform update
+				setCols, setVals := []string{}, []any{}
+				for k, v := range mergedData {
+					if k == "id" || k == "created" {
+						continue
+					}
+					setCols = append(setCols, fmt.Sprintf("%s = ?", k))
+					switch val := v.(type) {
+					case map[string]any, []any:
+						setVals = append(setVals, formatLuaTable(val))
+					default:
+						setVals = append(setVals, v)
+					}
+				}
+				setVals = append(setVals, id)
+				updateQ := fmt.Sprintf("UPDATE %s SET %s WHERE id = ?", cName, strings.Join(setCols, ", "))
+				_, err = env.DataDBConn.Exec(updateQ, setVals...)
+				if err != nil {
+					resultObj.RawSetString("result", lua.LBool(false))
+					resultObj.RawSetString("err", lua.LString(err.Error()))
+					results.Append(resultObj)
+					continue
+				}
+
+				// Fetch updated item
+				updatedItems, _ := queryDB(env.DataDBConn, "SELECT * FROM "+cName+" WHERE id = ?", id)
+				if len(updatedItems) == 0 {
+					resultObj.RawSetString("result", lua.LBool(false))
+					resultObj.RawSetString("err", lua.LString("item gone after update"))
+					results.Append(resultObj)
+					continue
+				}
+
+				// post_update
+				if hooks != nil && hooks.RawGetString("post_update").Type() == lua.LTFunction {
+					updatedLua := toLValue(L, updatedItems[0])
+					dataLua := toLValue(L, mergedData)
+					rets, err := env.callMiddlewareHook(L, hooks, "post_update", updatedLua, dataLua)
+					if err != nil {
+						resultObj.RawSetString("result", lua.LBool(false))
+						resultObj.RawSetString("err", lua.LString(err.Error()))
+						results.Append(resultObj)
+						continue
+					}
+					if len(rets) == 0 {
+						resultObj.RawSetString("result", lua.LBool(true))
+					} else {
+						resultObj.RawSetString("result", rets[0])
+					}
+				} else {
+					resultObj.RawSetString("result", lua.LBool(true))
+				}
+				results.Append(resultObj)
+			}
+			L.Push(results)
 			return 1
 		}))
 
@@ -2605,20 +3008,95 @@ func (env *Environment) injectDB(L *lua.LState) {
 			cName := L.CheckTable(1).RawGetString("_name").String()
 			queryMap, _ := luaValueToInterface(L.OptTable(2, L.NewTable())).(map[string]any)
 
+			hooks := env.loadMiddlewareHooks(L, cName)
+
 			whereVals, whereCols := []any{}, []string{"1=1"}
 			for k, v := range queryMap {
 				whereCols = append(whereCols, fmt.Sprintf("%s = ?", k))
 				whereVals = append(whereVals, v)
 			}
-
-			q := fmt.Sprintf("DELETE FROM %s WHERE %s", cName, strings.Join(whereCols, " AND "))
-			_, err := env.DataDBConn.Exec(q, whereVals...)
+			selectQ := fmt.Sprintf("SELECT id FROM %s WHERE %s", cName, strings.Join(whereCols, " AND "))
+			rows, err := env.DataDBConn.Query(selectQ, whereVals...)
 			if err != nil {
 				L.Push(lua.LBool(false))
 				L.Push(lua.LString(err.Error()))
 				return 2
 			}
-			L.Push(lua.LBool(true))
+			var ids []int64
+			for rows.Next() {
+				var id int64
+				if err := rows.Scan(&id); err == nil {
+					ids = append(ids, id)
+				}
+			}
+			rows.Close()
+
+			results := L.NewTable()
+			for _, id := range ids {
+				resultObj := L.NewTable()
+				resultObj.RawSetString("id", lua.LNumber(id))
+
+				origItems, err := queryDB(env.DataDBConn, "SELECT * FROM "+cName+" WHERE id = ?", id)
+				if err != nil || len(origItems) == 0 {
+					resultObj.RawSetString("result", lua.LBool(false))
+					resultObj.RawSetString("err", lua.LString("item not found"))
+					results.Append(resultObj)
+					continue
+				}
+				origItem := origItems[0]
+
+				// pre_delete
+				if hooks != nil && hooks.RawGetString("pre_delete").Type() == lua.LTFunction {
+					origLua := toLValue(L, origItem)
+					rets, err := env.callMiddlewareHook(L, hooks, "pre_delete", origLua)
+					if err != nil {
+						resultObj.RawSetString("result", lua.LBool(false))
+						resultObj.RawSetString("err", lua.LString(err.Error()))
+						results.Append(resultObj)
+						continue
+					}
+					if len(rets) >= 1 && (rets[0] == lua.LNil || (rets[0].Type() == lua.LTBool && rets[0] == lua.LFalse)) {
+						errMsg := "[middleware - pre_delete] aborted"
+						if len(rets) >= 2 && rets[1].Type() == lua.LTString {
+							errMsg = "[middleware - pre_delete] " + rets[1].String()
+						}
+						resultObj.RawSetString("result", lua.LBool(false))
+						resultObj.RawSetString("err", lua.LString(errMsg))
+						results.Append(resultObj)
+						continue
+					}
+				}
+
+				// execute delete
+				_, err = env.DataDBConn.Exec(fmt.Sprintf("DELETE FROM %s WHERE id = ?", cName), id)
+				if err != nil {
+					resultObj.RawSetString("result", lua.LBool(false))
+					resultObj.RawSetString("err", lua.LString(err.Error()))
+					results.Append(resultObj)
+					continue
+				}
+
+				// post_delete
+				if hooks != nil && hooks.RawGetString("post_delete").Type() == lua.LTFunction {
+					origLua := toLValue(L, origItem)
+					rets, err := env.callMiddlewareHook(L, hooks, "post_delete", origLua)
+					if err != nil {
+						resultObj.RawSetString("result", lua.LBool(false))
+						resultObj.RawSetString("err", lua.LString(err.Error()))
+						results.Append(resultObj)
+						continue
+					}
+					if len(rets) == 0 {
+						resultObj.RawSetString("result", lua.LBool(true))
+					} else {
+						resultObj.RawSetString("result", rets[0])
+					}
+				} else {
+					resultObj.RawSetString("result", lua.LBool(true))
+				}
+				results.Append(resultObj)
+			}
+			L.Push(results)
 			return 1
 		}))
 
@@ -2795,7 +3273,7 @@ func (env *Environment) watchRoutes() {
 			if !ok {
 				return
 			}
-			
+
 			// If a new directory is created, add it to the watcher dynamically
 			if event.Op&fsnotify.Create == fsnotify.Create {
 				if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
@@ -2807,7 +3285,7 @@ func (env *Environment) watchRoutes() {
 			if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Remove|fsnotify.Rename) != 0 {
 				env.initRoutes()
 			}
-			
+
 		case err, ok := <-watcher.Errors:
 			if !ok {
 				return
@@ -3044,6 +3522,12 @@ func sliceToLTable(L *lua.LState, s []interface{}) *lua.LTable {
 }
 
 func toLValue(L *lua.LState, val interface{}) lua.LValue {
+	if val == nil {
+		return lua.LNil
+	}
+	if lv, ok := val.(lua.LValue); ok {
+		return lv
+	}
 	switch v := val.(type) {
 	case string:
 		return lua.LString(v)
@@ -3051,10 +3535,10 @@ func toLValue(L *lua.LState, val interface{}) lua.LValue {
 		return lua.LNumber(v)
 	case int:
 		return lua.LNumber(v)
+	case int64: // Prevents IDs from mysteriously rendering as string mappings
+		return lua.LNumber(v)
 	case bool:
 		return lua.LBool(v)
-	case nil:
-		return lua.LNil
 	case map[string]interface{}:
 		return mapToLTable(L, v)
 	case []interface{}:
@@ -3120,7 +3604,7 @@ func (env *Environment) mogoHandler(w http.ResponseWriter, r *http.Request) {
 
 	fn, err := L.LoadFile(route.FilePath)
 	if err != nil {
-		rl.Log("error", route.FilePath, "router", err.Error()) // <-- Changed
+		rl.Log("error", route.FilePath, "router", err.Error())
 		http.Error(w, "500 Internal Server Error", 500)
 		return
 	}
@@ -3133,7 +3617,7 @@ func (env *Environment) mogoHandler(w http.ResponseWriter, r *http.Request) {
 
 	L.Push(fn)
 	if err := L.PCall(0, 1, nil); err != nil {
-		rl.Log("error", route.FilePath, "execution", err.Error()) // <-- Changed
+		rl.Log("error", route.FilePath, "execution", err.Error())
 		http.Error(w, "500 Internal Server Error: execution failed", 500)
 		return
 	}
@@ -3392,7 +3876,7 @@ func (env *Environment) mogoHandler(w http.ResponseWriter, r *http.Request) {
 	launchPostHook := func() {
 		if postHook != nil {
 			handoff = true
-			L.RemoveContext() 
+			L.RemoveContext()
 			go func(state *lua.LState, hook *lua.LFunction, lTop int, rPath string) {
 				defer func() {
 					state.RemoveContext()
@@ -3407,7 +3891,7 @@ func (env *Environment) mogoHandler(w http.ResponseWriter, r *http.Request) {
 
 				state.Push(hook)
 				if err := state.PCall(0, 0, nil); err != nil {
-					rl.Log("error", rPath, "post-hook", err.Error()) // <-- Changed
+					rl.Log("error", rPath, "post-hook", err.Error())
 				}
 			}(L, postHook, top, route.FilePath)
 		}
@@ -3521,7 +4005,7 @@ func startServer(env *Environment, port int) {
 func startStagingServer() {
 	stagingMu.Lock()
 	defer stagingMu.Unlock()
-	
+
 	if stagingStarted {
 		return
 	}
@@ -3533,14 +4017,14 @@ func startStagingServer() {
 	StagingEnv.initRoutes()
 	StagingEnv.initLuaPool()
 	StagingEnv.initCron()
-	
+
 	go StagingEnv.watchRoutes()
 
 	stagingPort := appSettings.StagingPort
 	if stagingPort <= 0 {
 		stagingPort = 8090
 	}
-	
+
 	stagingStarted = true
 	go startServer(StagingEnv, stagingPort)
 }
@@ -3571,7 +4055,7 @@ func main() {
 	if cliStagingPort != 0 {
 		appSettings.StagingPort = cliStagingPort
 	}
-	
+
 	// Apply the CLI port override and fallbacks BEFORE initializing the DB
 	if cliPort != 0 {
 		appSettings.Port = cliPort
@@ -3591,7 +4075,7 @@ func main() {
 
 	ProdEnv.initRoutes()
 	ProdEnv.initCron()
-	
+
 	go ProdEnv.watchRoutes()
 
 	go startServer(ProdEnv, appSettings.Port)

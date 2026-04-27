@@ -31,6 +31,7 @@ Mogo automatically creates the following directories in your project root:
 *   `public/`: Files placed here are served statically at the site root (note: Mogo serves static files before dynamic routes)
 *   `scripts/`: Lua scripts intended to be run as scheduled jobs
 *   `uploads/`: Default destination folder for client file uploads
+*   `middleware/`: Lua scripts that hook into and intercept database operations
 
 ## Lua API Reference
 
@@ -104,15 +105,78 @@ Mogo has a simple CRUD API for collections. Relations are automatically resolved
     *  `local user = db.users:get({ last_name = "Doe" }, 1 )[1]`
 *   **`db.<collection>:insert(data)`**: Inserts a row and returns the new record; `id`, `created`, and `updated` are auto-generated; returns new item id
     *   `uid = db.users:insert({ firstName = "Alice", age = 30 })`
-*   **`db.<collection>:update(query, { foo = "bar", baz = nil })`**: Updates items matching the query with given table values; returns a success boolean
-    *   `success = db.users:update({ id = 1 }, { age = 31 })`
-*   **`db.<collection>:delete(query)`**: Deletes matching records; returns a success boolean
-*   **Raw SQL**: Call the `db` object as a function for direct SQL queries. Returns a table of results for `SELECT`/`PRAGMA`, and `true, rowsAffected` for mutations. Note that system SQL tables are: `_api_keys`, `_collections`, `_cron_jobs`, `schema`
+*   **`db.<collection>:update(query, { foo = "bar", baz = nil })`**: Updates items matching the query. Because updates are processed per-item (to support middleware hooks), this returns an array of result objects indicating the success/failure of each affected record: `{{id = 1, result = true}, {id = 2, result = false, err = "..."}}`.
+    *   `results = db.users:update({ role = "user" }, { active = false })`
+*   **`db.<collection>:delete(query)`**: Deletes matching records. Like updates, this processes per-item and returns an array of result objects.
+*   **Raw SQL**: Call the `db` object as a function for direct SQL queries. Returns a table of results for `SELECT`/`PRAGMA`, and `true, rowsAffected` for mutations. Note that system SQL tables are: `_api_keys`, `_collections`, `_cron_jobs`, `_schema`. **Raw SQL queries bypass collection middleware.**
     *   `local users = db("SELECT * FROM users WHERE age > ?", 18)`
 *   **Relations**: Relational fields are automatically expanded as nested tables
     *   `local user = db.messages({}, 1, "created")[1].user -- user.id == 1`
 
-### 5. HTTP Client (`http`)
+### 5. Collection Middleware
+You can attach Lua scripts to collections to intercept, validate, or modify database operations. These scripts live in the `middleware/` directory and are assigned to collections via the Admin Dashboard's Collection Manager.
+
+A middleware script should return a table containing any of the following lifecycle hooks:
+
+```lua
+return {
+  -- Runs before a record is inserted.
+  -- You must return the data table to proceed, or `nil, "Error message"` to abort.
+  pre_insert = function(data)
+    if not data.email or data.email == "" then
+      return nil, "Email is required"
+    end
+    data.status = "pending"
+    return data
+  end,
+
+  -- Runs after successful insertion.
+  -- Return a custom value to override what `db:insert()` returns to the caller,
+  -- or return nothing/nil to default to returning the new record's ID.
+  post_insert = function(item)
+    log.info("New user registered: " .. item.email)
+  end,
+
+  -- Runs before an existing record is updated.
+  -- Returns `true, modified_data` to proceed, or `nil, "Error"` to abort.
+  pre_update = function(item, data)
+    if data.role == "admin" and item.role ~= "admin" then
+      return nil, "Cannot elevate role to admin"
+    end
+    data.last_modified_by = "system"
+    return true, data 
+  end,
+
+  -- Runs after an update.
+  post_update = function(item, applied_data)
+    -- ...
+  end,
+
+  -- Runs before an item is deleted. Return `true` to allow, `nil, "Error"` to prevent.
+  pre_delete = function(item)
+    if item.role == "admin" then return nil, "Cannot delete admins" end
+    return true
+  end,
+
+  -- Runs after a successful deletion.
+  post_delete = function(item)
+    log.info("Deleted user: " .. item.id)
+  end,
+
+  -- Formatter hook. Runs on every item retrieved via `db:get()`
+  -- as well as when this collection is expanded as a nested relation.
+  item = function(record)
+    record.password_hash = nil -- hide sensitive fields from the rest of the application
+    record.full_name = record.first_name .. " " .. record.last_name
+    return record
+  end
+}
+```
+**Important Middleware Notes:**
+* Because `update` and `delete` hooks require inspecting the existing data, the Lua `db:update()` and `db:delete()` methods process records sequentially (one by one), and **do not** run inside a bulk SQL transaction. 
+* Middleware hooks are **bypassed** if you execute raw SQL strings via `db("SELECT/UPDATE/DELETE...")`. 
+
+### 6. HTTP Client (`http`)
 Make outbound HTTP requests from your scripts.
 
 *   **`http(method, url, [opts])`**
@@ -127,7 +191,7 @@ if res.status == 200 then
 end
 ```
 
-### 6. Logging (`log`)
+### 7. Logging (`log`)
 Logs are saved to `log.sqlite` and are viewable in the Admin UI. Logs are automatically deleted after the days set in settings (default 30).
 
 *   **`log.info(msg)`**
@@ -135,7 +199,7 @@ Logs are saved to `log.sqlite` and are viewable in the Admin UI. Logs are automa
 *   **`log.error(msg)`**
 *   **`log:get([limit])`**: Returns array of last `limit` logs, or last log if no limit given. Logs have fields `{id, timestamp, level, origin, script, message}`
 
-### 7. Standard Libraries & Unsafe Lua
+### 8. Standard Libraries & Unsafe Lua
 By default, Mogo restricts the Lua environment for safety. Standard libraries `table`, `string`, `math`, `coroutine` are available, but `os` is restricted (dangerous functions like `os.execute` and `os.remove` are stripped), and `io` is unavailable. 
 
 If you need complete access to the host system from your scripts, you can enable **"Allow Unsafe Lua"** in the Admin Settings. This exposes the complete `io`, and `debug` libraries and removes directory jailing for file operations (`res:file()` and `req.files.save()`).
