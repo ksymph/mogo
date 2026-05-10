@@ -1726,7 +1726,7 @@ let relSearchTimeout;
               let cur = tree;
               for (let i = 0; i < parts.length; i++) {
                 let p = parts[i];
-                if (i === parts.length - 1) cur[p] = f.is_dir ? {} : null;
+                if (i === parts.length - 1) cur[p] = f.is_dir ? {} : { size: f.size };
                 else { if (!cur[p]) cur[p] = {}; cur = cur[p]; }
               }
             });
@@ -1740,8 +1740,8 @@ let relSearchTimeout;
         
         for (let k in node) {
           let path = prefix ? prefix + "/" + k : k;
-          if (node[k] === null) {
-            html += `<li class="tree-item" draggable="true" data-base="${baseName}" data-path="${esc(path)}" onclick="editFile('${baseName}', '${esc(path)}')">
+          if (node[k] && node[k].size !== undefined) {
+            html += `<li class="tree-item" draggable="true" data-base="${baseName}" data-path="${esc(path)}" data-size="${node[k].size}" onclick="editFile('${baseName}', '${esc(path)}', ${node[k].size})">
             <span class="tree-label" title="${k}">📄 ${k}</span>
             <div class="tree-actions">
               <span onclick="event.stopPropagation(); renameModal('${baseName}', '${esc(path)}')">${renameIcon}</span>
@@ -1800,13 +1800,13 @@ if (!window.activeEditor) {
 
       if (!window.activeEditor && window.fileEditorCache['files_active']) {
           let cache = window.fileEditorCache['files_active'];
-          editFile(cache.base, cache.path);
+          editFile(cache.base, cache.path, 0);
       }
     }
 
     const extMap = { 'js': 'javascript', 'ts': 'typescript', 'py': 'python', 'sh': 'bash', 'md': 'markdown' };
 
-async function editFile(base, path) {
+async function editFile(base, path, size) {
     if (window.activeEditor && window.activeEditor.path !== path) {
         if (window.activeEditor.editor && window.activeEditor.editor.value !== window.activeEditor.originalContent) {
             if (!confirm("You have unsaved changes in the current file. Discard them?")) return;
@@ -1832,17 +1832,20 @@ async function editFile(base, path) {
         <div>${apiBtnHtml}<button id="btn-save-file" class="btn" disabled onclick="saveFile('${base}', '${esc(path)}')" title="Ctrl+S">Save changes</button></div>
     `;
 
-    if (path.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        document.getElementById('pane-content').innerHTML = `<img src="/api/files?base=${base}&path=${path}&raw=true" style="max-width:100%;max-height:80vh">`;
-        return;
-    }
+    const MAX_PREVIEW_SIZE = 20 * 1024 * 1024; // 20MB
+    const ext = path.split('.').pop().toLowerCase();
     
-    if (path.match(/\.(mp3|wav|ogg|flac|aac)$/i)) {
-        document.getElementById('pane-content').innerHTML = `
-          <div style="display:flex; justify-content:center; align-items:center; height:100%;">
-            <audio controls src="/api/files?base=${base}&path=${path}&raw=true" style="width: 80%; max-width: 600px;"></audio>
-          </div>
-        `;
+    if (path.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i) || path.match(/\.(mp3|wav|ogg|flac|aac|m4a)$/i) || path.match(/\.(mp4|webm|ogg)$/i)) {
+        if (size > MAX_PREVIEW_SIZE) {
+            document.getElementById('pane-content').innerHTML = `
+                <div style="text-align:center; padding:2rem">
+                    <p>File too large to preview (${(size / (1024*1024)).toFixed(2)} MB).</p>
+                    <button class="btn" onclick="previewFileForce('${base}', '${esc(path)}')">Preview anyway</button>
+                </div>
+            `;
+        } else {
+            previewFile(base, path);
+        }
         return;
     }
     
@@ -1865,8 +1868,7 @@ async function editFile(base, path) {
     const res = await api(`/files?base=${base}&path=${path}`);
     let normalizedContent = (res.content || '').replace(/\r\n/g, '\n');
     
-    let ext = path.split('.').pop().toLowerCase();
-    ext = extMap[ext] || ext;
+    let extMapped = extMap[ext] || ext;
 
     let wrapperId = "editor-" + Date.now() + Math.floor(Math.random()*1000);
     let editorWrapper = document.createElement('div');
@@ -1895,7 +1897,7 @@ async function editFile(base, path) {
     };
 
     window.editor = createEditor('#' + wrapperId, {
-        language: ext,
+        language: extMapped,
         value: normalizedContent,
         tabSize: edTabSize,
         insertSpaces: edInsertSpaces,
@@ -1916,6 +1918,30 @@ async function editFile(base, path) {
     
     window.fileEditorCache[cacheKey] = window.activeEditor;
 }
+
+window.previewFileForce = function(base, path) {
+    previewFile(base, path);
+};
+
+window.previewFile = function(base, path) {
+    const ext = path.split('.').pop().toLowerCase();
+    const url = `/api/files?base=${base}&path=${path}&raw=true`;
+    
+    let html = '';
+    if (path.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)) {
+        html = `<img src="${url}" style="max-width:100%;max-height:80vh">`;
+    } else if (path.match(/\.(mp3|wav|ogg|flac|aac|m4a)$/i)) {
+        html = `<audio controls src="${url}" style="width: 80%; max-width: 600px;"></audio>`;
+    } else if (path.match(/\.(mp4|webm|ogg)$/i)) {
+        html = `<video controls src="${url}" style="max-width:100%;max-height:80vh"></video>`;
+    }
+    
+    document.getElementById('pane-content').innerHTML = `
+        <div style="display:flex; justify-content:center; align-items:center; height:100%;">
+            ${html}
+        </div>
+    `;
+};
 
 function showApiDocs() {
       document.getElementById('modal-title').innerText = "Lua API Reference";
