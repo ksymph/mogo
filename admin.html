@@ -878,7 +878,7 @@ document.getElementById('modal-title').innerText = `${id ? 'Edit' : 'New'} Item`
         isInitialRender = false;
         
         let html = ``;
-        if (isNew) html += `<div class="form-field"><input id="col-name" placeholder="" required value="${window._tempColName}"><label>Collection name</label></div>`;
+        html += `<div class="form-field"><input id="col-name" placeholder="" required value="${window._tempColName}"><label>Collection name</label></div>`;
 
         html += `<div id="schema-fields-container" style="position:relative; display:flex; flex-direction:column; gap:8px;">`;
         html += window._tempSchema.map((f, i) => {
@@ -960,17 +960,18 @@ document.getElementById('modal-title').innerText = `${id ? 'Edit' : 'New'} Item`
           return newField;
         });
 
-      const middlewareScript = (document.getElementById('col-middleware') ? document.getElementById('col-middleware').value : window._tempMiddlewareScript) || "";
+      const middlewareScript = (document.getElementById('col-middleware') ? document.getElementById('col-middleware') : window._tempMiddlewareScript) || "";
+      const middlewareScriptVal = typeof middlewareScript === 'string' ? middlewareScript : middlewareScript.value;
 
-      let targetName = name;
+      let targetName = document.getElementById('col-name').value;
+      if (!targetName) {
+        return alert('Collection name cannot be empty.');
+      }
+
       if (!name) {
-        targetName = document.getElementById('col-name').value;
-        if (!targetName) {
-            return alert('Collection name cannot be empty.');
-        }
-        await api(`/collections`, { method: 'POST', body: { name: targetName, schema: schemaForBackend, middleware_script: middlewareScript } });
+        await api(`/collections`, { method: 'POST', body: { name: targetName, schema: schemaForBackend, middleware_script: middlewareScriptVal } });
       } else {
-        await api(`/collections/${name}`, { method: 'PUT', body: { schema: schemaForBackend, middleware_script: middlewareScript } });
+        await api(`/collections/${name}`, { method: 'PUT', body: { name: targetName, schema: schemaForBackend, middleware_script: middlewareScriptVal } });
       }
       closeModal();
       await loadCollections();

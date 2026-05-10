@@ -247,6 +247,7 @@ type SchemaField struct {
 	Name     string `json:"name"`
 	Type     string `json:"type"`
 	Required bool   `json:"required"`
+	Position int    `json:"position"`
 }
 
 func (env *Environment) getCollectionSet() map[string]bool {
@@ -420,15 +421,16 @@ func (env *Environment) getCollectionSchema(collection string) []SchemaField {
 		return cached.([]SchemaField)
 	}
 	var schema []SchemaField = []SchemaField{}
-	q := "SELECT s.field, s.type, s.required FROM _schema s JOIN _collections c ON s.collection_id = c.id WHERE c.name = ? ORDER BY s.position ASC, s.id ASC"
+	q := "SELECT s.field, s.type, s.required, s.position FROM _schema s JOIN _collections c ON s.collection_id = c.id WHERE c.name = ? ORDER BY s.position ASC, s.id ASC"
 	rows, err := env.ConfigDBConn.Query(q, collection)
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
 			var field, typ string
 			var required bool
-			rows.Scan(&field, &typ, &required)
-			schema = append(schema, SchemaField{Name: field, Type: typ, Required: required})
+			var position int
+			rows.Scan(&field, &typ, &required, &position)
+			schema = append(schema, SchemaField{Name: field, Type: typ, Required: required, Position: position})
 		}
 	}
 	env.SchemaCache.Store(collection, schema)
@@ -481,22 +483,47 @@ func (env *Environment) updateCollectionInDB(name string, schema []SchemaField) 
 		return fmt.Errorf("collection not found")
 	}
 
-	existingSchema := make(map[string]string)
-	rows, err := env.ConfigDBConn.Query("SELECT field, type FROM _schema WHERE collection_id = ?", collectionID)
+	existingFields := make(map[string]SchemaField)
+	rows, err := env.ConfigDBConn.Query("SELECT field, type, required, position FROM _schema WHERE collection_id = ?", collectionID)
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
 			var f, t string
-			rows.Scan(&f, &t)
-			existingSchema[f] = t
+			var req bool
+			var pos int
+			rows.Scan(&f, &t, &req, &pos)
+			existingFields[f] = SchemaField{Name: f, Type: t, Required: req, Position: pos}
 		}
+	}
+
+	// Detect renames
+	renames := make(map[string]string) // oldName -> newName
+	for i, newField := range schema {
+		newField.Position = i
+		for oldName, oldField := range existingFields {
+			if oldName != newField.Name &&
+				oldField.Type == newField.Type &&
+				oldField.Position == newField.Position {
+				// Found a potential rename
+				renames[oldName] = newField.Name
+			}
+		}
+	}
+
+	// Perform renames
+	for oldName, newName := range renames {
+		env.DataDBConn.Exec(fmt.Sprintf("ALTER TABLE %s RENAME COLUMN %s TO %s", name, oldName, newName))
+		env.ConfigDBConn.Exec("UPDATE _schema SET field = ? WHERE collection_id = ? AND field = ?", newName, collectionID, oldName)
+		delete(existingFields, oldName)
+		existingFields[newName] = SchemaField{Name: newName, Type: renames[oldName]} // Update existingFields to reflect rename
 	}
 
 	colSet := env.getCollectionSet()
 	newFields := make(map[string]bool)
 	for i, field := range schema {
+		field.Position = i
 		newFields[field.Name] = true
-		if _, exists := existingSchema[field.Name]; !exists {
+		if _, exists := existingFields[field.Name]; !exists {
 			sqlType := "TEXT"
 			switch field.Type {
 			case "number":
@@ -516,7 +543,7 @@ func (env *Environment) updateCollectionInDB(name string, schema []SchemaField) 
 		}
 	}
 
-	for existingField := range existingSchema {
+	for existingField := range existingFields {
 		if !newFields[existingField] {
 			env.DataDBConn.Exec(fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", name, existingField))
 			env.ConfigDBConn.Exec("DELETE FROM _schema WHERE collection_id = ? AND field = ?", collectionID, existingField)
@@ -525,6 +552,36 @@ func (env *Environment) updateCollectionInDB(name string, schema []SchemaField) 
 
 	env.ConfigDBConn.Exec("UPDATE _collections SET updated = ? WHERE id = ?", time.Now().Unix(), collectionID)
 	env.SchemaCache.Delete(name)
+	return nil
+}
+
+func (env *Environment) renameCollectionInDB(oldName, newName string) error {
+	if oldName == newName {
+		return nil
+	}
+	var exists int
+	err := env.ConfigDBConn.QueryRow("SELECT COUNT(*) FROM _collections WHERE name = ?", newName).Scan(&exists)
+	if err != nil {
+		return err
+	}
+	if exists > 0 {
+		return fmt.Errorf("collection name already exists")
+	}
+
+	// Rename table
+	_, err = env.DataDBConn.Exec(fmt.Sprintf("ALTER TABLE %s RENAME TO %s", oldName, newName))
+	if err != nil {
+		return err
+	}
+
+	// Update _collections
+	_, err = env.ConfigDBConn.Exec("UPDATE _collections SET name = ? WHERE name = ?", newName, oldName)
+	if err != nil {
+		return err
+	}
+
+	env.SchemaCache.Delete(oldName)
+	env.SchemaCache.Delete(newName)
 	return nil
 }
 

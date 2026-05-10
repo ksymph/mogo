@@ -967,10 +967,20 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 				return
 			}
 			var req struct {
+				Name             string        `json:"name"`
 				Schema           []SchemaField `json:"schema"`
 				MiddlewareScript string        `json:"middleware_script"`
 			}
 			json.NewDecoder(r.Body).Decode(&req)
+
+			if req.Name != "" && req.Name != collection {
+				if err := env.renameCollectionInDB(collection, req.Name); err != nil {
+					http.Error(w, err.Error(), 500)
+					return
+				}
+				collection = req.Name
+			}
+
 			if err := env.updateCollectionInDB(collection, req.Schema); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
@@ -1169,13 +1179,14 @@ func (env *Environment) handleAdminFiles(w http.ResponseWriter, r *http.Request)
 		type FileInfo struct {
 			Path  string `json:"path"`
 			IsDir bool   `json:"is_dir"`
+			Size  int64  `json:"size"`
 		}
 		var files []FileInfo = []FileInfo{}
 		filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
 			if err == nil {
 				rel, _ := filepath.Rel(baseDir, path)
 				if rel != "." {
-					files = append(files, FileInfo{Path: filepath.ToSlash(rel), IsDir: info.IsDir()})
+					files = append(files, FileInfo{Path: filepath.ToSlash(rel), IsDir: info.IsDir(), Size: info.Size()})
 				}
 			}
 			return nil
