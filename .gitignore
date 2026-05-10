@@ -1,0 +1,6 @@
+data/data.sqlite
+data/log.sqlite
+data/settings.json
+data/backups/
+staging/
+uploads/
