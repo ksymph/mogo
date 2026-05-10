@@ -24,82 +24,27 @@
 
   <div id="app-view">
     <div class="sidebar">
-      <!--
-        icons by https://iconoir.com/, licensed under MIT
-        MIT License
-
-        Copyright (c) 2021 Luca Burgio
-
-        Permission is hereby granted, free of charge, to any person obtaining a copy
-        of this software and associated documentation files (the "Software"), to deal
-        in the Software without restriction, including without limitation the rights
-        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-        copies of the Software, and to permit persons to whom the Software is
-        furnished to do so, subject to the following conditions:
-
-        The above copyright notice and this permission notice shall be included in all
-        copies or substantial portions of the Software.
-
-        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-        SOFTWARE.
-      -->
       <a href="?tab=collections" class="icon-btn" onclick="handleNavClick(event, 'collections')" title="Collections">
         <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M5 12V18C5 18 5 21 12 21C19 21 19 18 19 18V12" stroke="currentColor" stroke-width="2" />
           <path d="M5 6V12C5 12 5 15 12 15C19 15 19 12 19 12V6" stroke="currentColor" stroke-width="2" />
-          <path d="M12 3C19 3 19 6 19 6C19 6 19 9 12 9C5 9 5 6 5 6C5 6 5 3 12 3Z" stroke="currentColor"
-            stroke-width="2" />
+          <path d="M12 3C19 3 19 6 19 6C19 6 19 9 12 9C5 9 5 6 5 6C5 6 5 3 12 3Z" stroke="currentColor" stroke-width="2" />
         </svg>
       </a>
-      <a href="?tab=routes" class="icon-btn" onclick="handleNavClick(event, 'routes')" title="Routes">
-        <svg width="32px" height="32px" viewBox="0 0 24 24" stroke-width="1.5" fill="none"
-          xmlns="http://www.w3.org/2000/svg">
-          <path d="M22 10L8 10C0 10 0 21 8 21M22 10L15 3M22 10L15 17" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-      </a>
-      <a href="?tab=middleware" class="icon-btn" onclick="handleNavClick(event, 'middleware')" title="Middleware">
-        <svg width="32px" height="32px" viewBox="0 0 24 24" stroke-width="1.5" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M8 10L8 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M16 10L16 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M12 22V16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M4 10H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M6 10V5C6 3.89543 6.89543 3 8 3H16C17.1046 3 18 3.89543 18 5V10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </a>
-      <a href="?tab=public" class="icon-btn" onclick="handleNavClick(event, 'public')" title="Public">
+      
+      <a href="?tab=files" class="icon-btn" onclick="handleNavClick(event, 'files')" title="Files">
         <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M7 18H10.5H14" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round" />
-          <path d="M7 14H7.5H8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="M7 10H8.5H10" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round" />
-          <path d="M7 2L16.5 2L21 6.5V19" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round" />
-          <path
-            d="M3 20.5V6.5C3 5.67157 3.67157 5 4.5 5H14.2515C14.4106 5 14.5632 5.06321 14.6757 5.17574L17.8243 8.32426C17.9368 8.43679 18 8.5894 18 8.74853V20.5C18 21.3284 17.3284 22 16.5 22H4.5C3.67157 22 3 21.3284 3 20.5Z"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="M14 5V8.4C14 8.73137 14.2686 9 14.6 9H18" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M7 18H10.5H14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+          <path d="M7 14H7.5H8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+          <path d="M7 10H8.5H10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+          <path d="M7 2L16.5 2L21 6.5V19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+          <path d="M3 20.5V6.5C3 5.67157 3.67157 5 4.5 5H14.2515C14.4106 5 14.5632 5.06321 14.6757 5.17574L17.8243 8.32426C17.9368 8.43679 18 8.5894 18 8.74853V20.5C18 21.3284 17.3284 22 16.5 22H4.5C3.67157 22 3 21.3284 3 20.5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+          <path d="M14 5V8.4C14 8.73137 14.2686 9 14.6 9H18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
         </svg>
       </a>
-      <a href="?tab=schedules" class="icon-btn" onclick="handleNavClick(event, 'schedules')" title="Schedules">
-        <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M12 6L12 12L18 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round" />
-          <path
-            d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-      </a>
+
       <a href="?tab=logs" class="icon-btn" onclick="handleNavClick(event, 'logs')" title="Logs">
-        <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          stroke-linecap="round" stroke-linejoin="round">
+        <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="8" y1="6" x2="21" y2="6"></line>
           <line x1="8" y1="12" x2="21" y2="12"></line>
           <line x1="8" y1="18" x2="21" y2="18"></line>
@@ -108,20 +53,21 @@
           <line x1="3" y1="18" x2="3.01" y2="18"></line>
         </svg>
       </a>
+      <a href="?tab=schedules" class="icon-btn" onclick="handleNavClick(event, 'schedules')" title="Schedules">
+        <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 6L12 12L18 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+          <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+      </a>
       <a href="?tab=settings" class="icon-btn" id="nav-settings-btn" onclick="handleNavClick(event, 'settings')" title="Settings">
         <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path
-            d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-          <path
-            d="M19.6224 10.3954L18.5247 7.7448L20 6L18 4L16.2647 5.48295L13.5578 4.36974L12.9353 2H10.981L10.3491 4.40113L7.70441 5.51596L6 4L4 6L5.45337 7.78885L4.3725 10.4463L2 11V13L4.40111 13.6555L5.51575 16.2997L4 18L6 20L7.79116 18.5403L10.397 19.6123L11 22H13L13.6045 19.6132L16.2551 18.5155C16.6969 18.8313 18 20 18 20L20 18L18.5159 16.2494L19.6139 13.598L21.9999 12.9772L22 11L19.6224 10.3954Z"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M19.6224 10.3954L18.5247 7.7448L20 6L18 4L16.2647 5.48295L13.5578 4.36974L12.9353 2H10.981L10.3491 4.40113L7.70441 5.51596L6 4L4 6L5.45337 7.78885L4.3725 10.4463L2 11V13L4.40111 13.6555L5.51575 16.2997L4 18L6 20L7.79116 18.5403L10.397 19.6123L11 22H13L13.6045 19.6132L16.2551 18.5155C16.6969 18.8313 18 20 18 20L20 18L18.5159 16.2494L19.6139 13.598L21.9999 12.9772L22 11L19.6224 10.3954Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
       </a>
       <a href="?tab=staging" class="icon-btn" id="nav-staging-btn" onclick="handleNavClick(event, 'staging')" title="Staging">
         <svg width="32px" height="32px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M3 20.4V3.6C3 3.26863 3.26863 3 3.6 3H20.4C20.7314 3 21 3.26863 21 3.6V20.4C21 20.7314 20.7314 21 20.4 21H3.6C3.26863 21 3 20.7314 3 20.4Z"
-          stroke="currentColor" stroke-width="2"></path>
+          <path d="M3 20.4V3.6C3 3.26863 3.26863 3 3.6 3H20.4C20.7314 3 21 3.26863 21 3.6V20.4C21 20.7314 20.7314 21 20.4 21H3.6C3.26863 21 3 20.7314 3 20.4Z" stroke="currentColor" stroke-width="2"></path>
           <path d="M6 18L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
           <path d="M12 14V6M12 6L15.5 9.5M12 6L8.5 9.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
       </a>
@@ -163,27 +109,21 @@
   }
 
   function applyTheme(theme) {
-    // If no argument, read from localStorage, fallback to 'auto'
     theme = theme || localStorage.getItem('mogo_theme') || 'auto';
 
-    // Determine the actual class to apply
     let effectiveTheme = theme;
     if (effectiveTheme === 'auto') {
       effectiveTheme = getSystemTheme();
     }
 
-    // Remove any existing theme class and apply the new one
     document.documentElement.classList.remove('theme-light', 'theme-dark');
     document.documentElement.classList.add(`theme-${effectiveTheme}`);
 
-    // Store the user's preference (not the resolved theme)
     localStorage.setItem('mogo_theme', theme);
   }
 
-  // Run on page load
   applyTheme();
 
-  // Optional: listen for system preference changes when in 'auto' mode
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     if (localStorage.getItem('mogo_theme') === 'auto') {
       applyTheme('auto');
@@ -211,12 +151,10 @@
   window.fileEditorCache = {}; // Tracks the last opened file per section: base -> { path, element, editor, originalContent }
   window.activeEditor = null;  // Pointer to the currently active editor instance
 
-  // Intercept Navigation logic for Single Page App architecture and Warn if Unsaved changes
   window.handleNavClick = function(e, tab) {
       if (e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
           e.preventDefault();
           
-          // Warn only when navigating to a DIFFERENT main sidebar section
           if (window.activeEditor) {
               let cache = window.activeEditor;
               if (cache.editor.value !== cache.originalContent) {
@@ -237,20 +175,24 @@
       nav(tab);
   });
 
-  // Listen for native <details> toggle events to save open/closed states
   document.addEventListener('toggle', (e) => {
     if (e.target.tagName === 'DETAILS') {
       const summary = e.target.querySelector('summary.tree-item');
-      if (summary && state.tab && state.openFolders[state.tab]) {
+      if (summary) {
         const path = summary.getAttribute('data-path') || '';
-        if (e.target.open) {
-          state.openFolders[state.tab].add(path);
-        } else {
-          state.openFolders[state.tab].delete(path);
+        const base = summary.getAttribute('data-base');
+        if (state.tab === 'files') {
+          let stateKey = `files_${base}`;
+          if (!state.openFolders[stateKey]) state.openFolders[stateKey] = new Set();
+          if (e.target.open) state.openFolders[stateKey].add(path);
+          else state.openFolders[stateKey].delete(path);
+        } else if (state.tab && state.openFolders[state.tab]) {
+          if (e.target.open) state.openFolders[state.tab].add(path);
+          else state.openFolders[state.tab].delete(path);
         }
       }
     }
-  }, true); // Use capture phase because 'toggle' events do not bubble
+  }, true);
 
   function handleSort(col) {
       if (state.sort.col === col) {
@@ -261,7 +203,7 @@
       }
       if (state.tab === 'collections') renderCollectionTable();
       if (state.tab === 'settings' && state.sub === 'keys') renderKeysTable();
-      if (state.tab === 'schedules') renderCronsTable();
+      if (state.tab === 'files') renderCronsTable();
     }
 
     function sortData(arr) {
@@ -288,23 +230,21 @@
       if (e.key === 'Escape' && document.getElementById('modal').style.display === 'flex') {
         closeModal();
       }
-      // Enter to confirm modals
       if (e.key === 'Enter' && document.getElementById('modal').style.display === 'flex') {
-        if (e.target.tagName === 'TEXTAREA') return; // Allow newlines in textareas
+        if (e.target.tagName === 'TEXTAREA') return; 
         const confirmBtn = document.getElementById('modal-confirm-btn');
         if (confirmBtn && !confirmBtn.disabled) {
           e.preventDefault();
           confirmBtn.click();
         }
       }
-      // Ctrl+S or Cmd+S to save file
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         const saveBtn = document.getElementById('btn-save-file');
         if (saveBtn && !saveBtn.disabled) {
           e.preventDefault();
           saveBtn.click();
         } else if (saveBtn && saveBtn.disabled) {
-          e.preventDefault(); // Prevent browser save dialog even if no changes
+          e.preventDefault(); 
         }
       }
     });
@@ -313,7 +253,6 @@
 
     async function api(path, opts = {}) {
       opts.headers = opts.headers || {};
-      // Only set JSON content type if it's not a FormData upload
       if (!(opts.body instanceof FormData)) {
         opts.headers["Content-Type"] = "application/json";
         if (opts.body && typeof opts.body !== 'string') opts.body = JSON.stringify(opts.body);
@@ -328,7 +267,7 @@
     // ---------- Drag and Drop List Reordering logic ----------
     let dragInfo = null;
     window.startDrag = function (e, index) {
-      if (e.button !== 0) return; // Allow only left click
+      if (e.button !== 0) return;
       e.preventDefault();
 
       const container = document.getElementById('schema-fields-container');
@@ -349,7 +288,7 @@
       row.style.top = (rect.top - containerRect.top) + 'px';
       row.style.left = (rect.left - containerRect.left) + 'px';
       row.style.boxShadow = 'var(--shadow)';
-      row.style.background = 'var(--card-bg)'; // Maintain visual block integrity
+      row.style.background = 'var(--card-bg)'; 
 
       container.insertBefore(placeholder, row.nextSibling);
 
@@ -367,7 +306,6 @@
       e.preventDefault();
       const { row, placeholder, container, startY, startTop } = dragInfo;
 
-      // Update visual positioning relative to drag
       const dy = e.clientY - startY;
       row.style.top = (startTop + dy) + 'px';
 
@@ -395,7 +333,6 @@
 
       const { row, placeholder, container, index } = dragInfo;
 
-      // Measure placeholder's final DOM location to translate to schema array offset
       const siblingsAndPlaceholder = Array.from(container.children).filter(c => c.classList.contains('schema-row') && c !== row);
       const newIndex = siblingsAndPlaceholder.indexOf(placeholder);
 
@@ -410,7 +347,6 @@
       container.insertBefore(row, placeholder);
       placeholder.remove();
 
-      // Reorder items in state tracking variable
       if (newIndex !== -1 && newIndex !== index) {
         const item = window._tempSchema.splice(index, 1)[0];
         window._tempSchema.splice(newIndex, 0, item);
@@ -438,7 +374,7 @@
 
       const res = await api(`/logs?level=${level}`);
       const logs = res.logs ||[];
-      state.logs = logs; // save for viewing details
+      state.logs = logs; 
 
       let html = `<table class="data-table"><thead><tr>
         <th style="width: 50px;">ID</th>
@@ -455,11 +391,9 @@
         logs.forEach((l, idx) => {
           let badgeColor = l.level === 'error' ? 'var(--danger)' : (l.level === 'warn' ? 'var(--accent)' : 'var(--success, #10b981)');
           
-          // Basic message truncation
           let shortMsg = l.message ? (l.message.length > 100 ? l.message.substring(0, 100) + '...' : l.message) : '';
           shortMsg = shortMsg.replace(/</g, "&lt;");
           
-          // Attempt to highlight the prepended contextual tag [like-this]
           shortMsg = shortMsg.replace(/^\[([^\]]+)\]/, '<span style="color:var(--muted); margin-right:4px;">[$1]</span>');
 
           html += `<tr style="cursor:pointer" onclick="viewLogDetail(${idx})">
@@ -506,7 +440,7 @@
       if (autoKey) {
         window.history.replaceState({}, document.title, window.location.pathname);
         try { await api('/auth/login', { method: 'POST', body: { api_key: autoKey } }); }
-        catch (e) { /* ignore auto-login failure */ }
+        catch (e) { }
       }
 
       try {
@@ -558,10 +492,12 @@
     }
 
     function nav(tab) {
+      if (['routes', 'middleware', 'public'].includes(tab)) tab = 'files';
+
       if (window.activeEditor && window.activeEditor.element && window.activeEditor.element.parentNode) {
           window.activeEditor.element.parentNode.removeChild(window.activeEditor.element);
       }
-      window.activeEditor = null; // Leaving the current view
+      window.activeEditor = null; 
 
       state.tab = tab; state.sub = ''; state.search = '';
       state.sort = { col: 'id', asc: true };
@@ -570,7 +506,7 @@
       let iconBtn = document.querySelector(`.icon-btn[href="?tab=${tab}"]`);
       if (iconBtn) iconBtn.classList.add('active');
 
-      document.getElementById('sub-sidebar').style.display =['collections', 'routes', 'middleware', 'public', 'schedules', 'settings'].includes(tab) ? 'flex' : 'none';
+      document.getElementById('sub-sidebar').style.display =['collections', 'files', 'settings'].includes(tab) ? 'flex' : 'none';
       document.getElementById('pane-header').style.display = 'flex';
       document.getElementById('pane-header').innerHTML = '';
       document.getElementById('pane-content').innerHTML = '';
@@ -580,7 +516,8 @@
       if (tab === 'settings') loadSettings('admin');
       if (tab === 'staging') loadStaging();
       if (tab === 'logs') loadLogs();
-      if (tab === 'routes' || tab === 'middleware' || tab === 'public' || tab === 'schedules') loadFiles(tab);
+      if (tab === 'schedules') loadCronJobs();
+      if (tab === 'files') loadAllFiles();
     }
 
     // ---------- collections ----------
@@ -658,7 +595,7 @@ function renderCollectionTable() {
           if (val === undefined || val === null || val === '') return `<td></td>`;
           return `<td>${(val === true || val === 1 || val === 'true') ? 'true' : 'false'}</td>`;
         }
-        // Handle expanded Relational Fields in the table view
+        
         if (sc && state.collections.some(col => col.name === sc.type)) {
           if (val === undefined || val === null || val === '') return `<td></td>`;
           if (typeof val === 'object' && val !== null) {
@@ -752,9 +689,8 @@ function itemModal(id = null) {
             </div>
           `;
         } else if (state.collections.some(c => c.name === f.type)) {
-          let target = f.type; // The type IS the target collection name
+          let target = f.type; 
           
-          // Extract the raw ID out of the expanded object
           let displayVal = val;
           if (typeof val === 'object' && val !== null) {
               displayVal = val.id;
@@ -813,15 +749,14 @@ async function saveItem(id) {
             let v = el.value.trim();
             if (v !== '') {
               try {
-                JSON.parse(v); // test if it's valid JSON
+                JSON.parse(v);
               } catch (e) {
                 alert(`Invalid JSON syntax in field '${f.name}': \n\n` + e.message);
                 hasError = true;
               }
             }
-            payload[f.name] = v; // pass it as a raw string
+            payload[f.name] = v; 
           } else if (state.collections.some(c => c.name === f.type)) {
-            // Parse relation fields to Int
             let v = parseInt(el.value, 10);
             payload[f.name] = isNaN(v) ? null : v;
           } else {
@@ -830,7 +765,7 @@ async function saveItem(id) {
         }
       });
       
-      if (hasError) return; // Prevent saving if JSON is malformed
+      if (hasError) return; 
       
       await api(`/collections/${state.sub}${id ? '/' + id : ''}`, { method: id ? 'PUT' : 'POST', body: payload });
       closeModal();
@@ -841,7 +776,7 @@ async function saveItem(id) {
       if (!inputEl.files || !inputEl.files.length) return;
       const file = inputEl.files[0];
       const formData = new FormData();
-      formData.append('path', ''); // root of uploads directory
+      formData.append('path', ''); 
       formData.append('files', file);
 
       const btn = inputEl.nextElementSibling;
@@ -851,7 +786,6 @@ async function saveItem(id) {
 
       try {
         await api(`/files?base=uploads`, { method: 'POST', body: formData });
-        // Set the text input to the path of the newly uploaded file
         document.getElementById(`f_${fieldName}`).value = 'uploads/' + file.name;
       } catch(e) {
         alert('Upload failed: ' + e.message);
@@ -859,7 +793,7 @@ async function saveItem(id) {
       
       btn.innerText = origText;
       btn.disabled = false;
-      inputEl.value = ''; // clear the hidden file input
+      inputEl.value = ''; 
     };
 
     async function editSchemaModal(name = '') {
@@ -871,13 +805,10 @@ async function saveItem(id) {
       try {
           const files = await api('/files?base=middleware');
           middlewareFiles = files.filter(f => !f.is_dir).map(f => f.path);
-      } catch (e) {
-          // Ignore, user lacks routes permission, falls back to raw text input
-      }
+      } catch (e) { }
 
       const allCollectionNames = new Set(state.collections.map(c => c.name));
 
-      // Convert schema from backend format (e.g., type: "users") to the UI's internal "relation:" format
       window._tempSchema = schema.map(f => {
         if (allCollectionNames.has(f.type)) {
           return { ...f, type: `relation:${f.type}` };
@@ -967,11 +898,10 @@ async function saveItem(id) {
     }
 
     async function saveSchema(name) {
-      // Filter out empty fields and transform the type for the backend
       const schemaForBackend = window._tempSchema
         .filter(f => f.name.trim() !== '')
         .map(f => {
-          const newField = { ...f }; // Create a copy
+          const newField = { ...f }; 
           if (newField.type && newField.type.startsWith('relation:')) {
             newField.type = newField.type.split(':')[1];
           }
@@ -1060,6 +990,7 @@ async function saveItem(id) {
       </div>
               <hr>
       <div class="form-block">
+              <label class="form-check"><span>Files (All directories)</span><input type="checkbox" id="pk_files"></label>
               <label class="form-check"><span>Routes (Includes Middleware)</span><input type="checkbox" id="pk_routes"></label>
               <label class="form-check"><span>Schedules</span><input type="checkbox" id="pk_schedules"></label>
               <label class="form-check"><span>Public</span><input type="checkbox" id="pk_public"></label>
@@ -1090,7 +1021,8 @@ async function saveItem(id) {
             if (document.getElementById(`pk_s_${name}`).checked) perms.collections[name].push("schema");
           }
         });
-      }["routes", "public", "schedules", "settings", "keys", "production", "staging"].forEach(k => { 
+      }
+      ["files", "routes", "public", "schedules", "settings", "keys", "production", "staging"].forEach(k => { 
         let el = document.getElementById(`pk_${k}`);
         if (el && el.checked) perms[k] = true; 
       });
@@ -1315,6 +1247,17 @@ async function loadAppSettings() {
         max_log_count_per_req: parseInt(document.getElementById('s-log-max').value, 10) || 100,
         unsafe_lua: document.getElementById('set_unsafe_lua').checked,
       };
+      
+      // Preserve current paths and custom dirs if they exist in state 
+      if (state.settings) {
+          payload.routes_path = state.settings.routes_path;
+          payload.middleware_path = state.settings.middleware_path;
+          payload.public_path = state.settings.public_path;
+          payload.scripts_path = state.settings.scripts_path;
+          payload.uploads_path = state.settings.uploads_path;
+          payload.custom_dirs = state.settings.custom_dirs;
+      }
+
       await api('/settings', { method: 'POST', body: payload });
       state.settings = payload;
       
@@ -1419,10 +1362,8 @@ async function loadAppSettings() {
 
         try {
             await api('/backup/restore', { method: 'POST', body: { file: filename } });
-            // The request will likely not complete because the server restarts. We'll just wait and reload.
             setTimeout(() => window.location.reload(), 5000);
         } catch (e) {
-            // If the request *does* complete with an error, the server didn't restart.
             alert('Restore failed: ' + e.message);
             document.querySelector('#modal').style.pointerEvents = 'auto';
             closeModal();
@@ -1536,7 +1477,6 @@ let relSearchTimeout;
             return `<td>${(val === true || val === 1 || val === 'true') ? 'true' : 'false'}</td>`;
           }
           
-          // Handle Relational Fields (expanded objects)
           if (sc && state.collections.some(col => col.name === sc.type)) {
               if (val === undefined || val === null || val === '') return `<td></td>`;
               if (typeof val === 'object' && val !== null) {
@@ -1607,114 +1547,45 @@ let relSearchTimeout;
       try {
         await api(`/files/rename`, { method: 'POST', body: { base: base, old_path: oldPath, new_path: newPath } });
         
-        // Evict matching/renamed files from the active editor cache
-        for (let b in window.fileEditorCache) {
-            if (b === base && window.fileEditorCache[b].path.startsWith(oldPath)) {
-                if (window.activeEditor && window.activeEditor.path === window.fileEditorCache[b].path) {
+        for (let k in window.fileEditorCache) {
+            if (k.startsWith(base + "_") && window.fileEditorCache[k].path && window.fileEditorCache[k].path.startsWith(oldPath)) {
+                if (window.activeEditor && window.activeEditor.path === window.fileEditorCache[k].path) {
                     window.activeEditor = null;
                     document.getElementById('pane-content').innerHTML = '';
                     document.getElementById('pane-header').innerHTML = '';
                 }
-                delete window.fileEditorCache[b];
+                delete window.fileEditorCache[k];
             }
         }
 
         closeModal();
-        loadFiles(base);
+        loadAllFiles();
       } catch (e) {
         alert("Rename failed: " + e.message);
         btn.disabled = false;
         btn.innerText = "Rename";
       }
     }
-    
-    async function loadFiles(base) {
-      if (!state.openFolders[base]) state.openFolders[base] = new Set(['']); // Root open by default
-      let folderName = base;
-      const res = await api(`/files?base=${base}`);
-      const files = res ||[];
-      let tree = {};
-      files.forEach(f => {
-        let parts = f.path.split('/');
-        let cur = tree;
-        for (let i = 0; i < parts.length; i++) {
-          let p = parts[i];
-          if (i === parts.length - 1) cur[p] = f.is_dir ? {} : null;
-          else { if (!cur[p]) cur[p] = {}; cur = cur[p]; }
-        }
-      });
 
-      function buildHtml(node, prefix = "") {
-        let html = "";
-        const renameIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16M8 4h8M8 20h8"/></svg>`;
-        
-        for (let k in node) {
-          let path = prefix ? prefix + "/" + k : k;
-          if (node[k] === null) {
-            html += `<li class="tree-item" data-path="${esc(path)}" onclick="editFile('${base}', '${esc(path)}')">
-            <span class="tree-label" title="${k}">📄 ${k}</span>
-            <div class="tree-actions">
-              <span onclick="event.stopPropagation(); renameModal('${base}', '${esc(path)}')">${renameIcon}</span>
-              <span class="del" onclick="event.stopPropagation(); deleteFile('${base}', '${esc(path)}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
-            </div>
-          </li>`;
-          } else {
-            let isOpen = state.openFolders[base].has(path) ? 'open' : '';
-            html += `<details ${isOpen}>
-              <summary class="tree-item" data-path="${esc(path)}">
-                <span class="tree-label folder-label" title="${k}">${k}</span>
-                <div class="tree-actions">
-                  <span onclick="event.preventDefault(); newFileModal('${base}', '${esc(path)}')" title="New in Folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m-7-7h14"/></svg></span>
-                  <span onclick="event.preventDefault(); renameModal('${base}', '${esc(path)}')">${renameIcon}</span>
-                  <span class="del" onclick="event.preventDefault(); deleteFile('${base}', '${esc(path)}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
-                </div>
-              </summary>
-              <ul>${buildHtml(node[k], path)}</ul>
-            </details>`;
-          }
-        }
-        return html;
-      }
-
-      let subHtml = "";
-      if (base === 'schedules') {
-        subHtml += `<div id="edit-schedules-btn" class="sub-item" onclick="loadCronJobs()">Edit Schedules</div><hr>`;
-        folderName = "scripts";
-      }
-      
-
-      subHtml += `
-      <div class="file-tree">
-        <div>
-          <details ${state.openFolders[base].has('') ? 'open' : ''}>
-            <summary class="tree-item root-item" data-path="">
-              <span class="tree-label folder-label">${folderName}</span>
-              <div class="tree-actions">
-                <span onclick="event.preventDefault(); newFileModal('${base}', '')" title="New file/folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m-7-7h14"/></svg></span>
-              </div>
-            </summary>
-            <ul>${buildHtml(tree) || `<i class="text-muted ml-6 text-sm">&nbsp&nbspempty folder</i>`}</ul>
-          </details>
-          
-        </div>
-      </div>
-    `;
-
-      document.getElementById('sub-sidebar').innerHTML = subHtml;
-      document.getElementById('pane-content').innerHTML = ``;
-
-      if (base === 'routes' || base === 'public' || base === 'middleware') {
-        const title = base.charAt(0).toUpperCase() + base.slice(1);
-        document.getElementById('pane-header').innerHTML = `<h2>${title}</h2>`;
-      }
-
-      // Bind File Tree Drag & Drop interactions for File Uploads
-      // Bind File Tree Drag & Drop interactions for File Uploads
+    function bindFileTreeDnD() {
       setTimeout(() => {
         const fileTree = document.querySelector('.file-tree');
         if (fileTree && !fileTree.dataset.dndBound) {
           fileTree.dataset.dndBound = true;
           
+          let draggedBase = null;
+          let draggedPath = null;
+
+          fileTree.addEventListener('dragstart', (e) => {
+            const target = e.target.closest('.tree-item');
+            if (target && target.getAttribute('draggable') === 'true') {
+              draggedBase = target.getAttribute('data-base');
+              draggedPath = target.getAttribute('data-path');
+              e.dataTransfer.setData('text/plain', draggedPath);
+              e.dataTransfer.effectAllowed = 'move';
+            }
+          });
+
           fileTree.addEventListener('dragover', (e) => {
             e.preventDefault();
             document.querySelectorAll('.tree-item.drag-over').forEach(el => el.classList.remove('drag-over'));
@@ -1731,42 +1602,159 @@ let relSearchTimeout;
             e.preventDefault();
             document.querySelectorAll('.tree-item.drag-over').forEach(el => el.classList.remove('drag-over'));
             
-            if (!e.dataTransfer.files || !e.dataTransfer.files.length) return;
-            
             let target = e.target.closest('.tree-item');
-            let path = '';
+            let targetPath = '';
+            let targetBase = '';
             
             if (target) {
-              path = target.getAttribute('data-path') || '';
+              targetPath = target.getAttribute('data-path') || '';
+              targetBase = target.getAttribute('data-base');
               if (target.tagName.toLowerCase() === 'li') {
-                let lastSlash = path.lastIndexOf('/');
-                path = lastSlash >= 0 ? path.substring(0, lastSlash) : '';
+                let lastSlash = targetPath.lastIndexOf('/');
+                targetPath = lastSlash >= 0 ? targetPath.substring(0, lastSlash) : '';
               }
             }
-            
-            await window.uploadFiles(base, path, e.dataTransfer.files);
+
+            if (e.dataTransfer.files && e.dataTransfer.files.length) {
+                if (!targetBase) return; 
+                await window.uploadFiles(targetBase, targetPath, e.dataTransfer.files);
+                return;
+            }
+
+            if (draggedBase && draggedPath) {
+              if (targetBase !== draggedBase) {
+                 alert("Cannot move files between different root directories.");
+                 return;
+              }
+              if (targetPath === draggedPath || targetPath.startsWith(draggedPath + '/')) {
+                 return; 
+              }
+
+              let parts = draggedPath.split('/');
+              let fileName = parts.pop();
+              let newPath = targetPath ? targetPath + '/' + fileName : fileName;
+
+              if (newPath === draggedPath) return;
+
+              try {
+                await api(`/files/rename`, { method: 'POST', body: { base: draggedBase, old_path: draggedPath, new_path: newPath } });
+                
+                for (let k in window.fileEditorCache) {
+                    if (k.startsWith(draggedBase + "_") && window.fileEditorCache[k].path && window.fileEditorCache[k].path.startsWith(draggedPath)) {
+                        delete window.fileEditorCache[k];
+                    }
+                }
+                if (window.activeEditor && window.activeEditor.base === draggedBase && window.activeEditor.path.startsWith(draggedPath)) {
+                    window.activeEditor = null;
+                    document.getElementById('pane-content').innerHTML = '';
+                    document.getElementById('pane-header').innerHTML = '';
+                }
+
+                loadAllFiles();
+              } catch (err) {
+                alert("Move failed: " + err.message);
+              }
+            }
           });
         }
       }, 0);
+    }
+    
+    async function loadAllFiles() {
+      const basesInfo = await api('/files?base=root');
+      
+      let allFilesTree = {};
+      for (const b of basesInfo) {
+        let baseName = b.path;
+        try {
+            const files = await api(`/files?base=${baseName}`);
+            let tree = {};
+            files.forEach(f => {
+              let parts = f.path.split('/');
+              let cur = tree;
+              for (let i = 0; i < parts.length; i++) {
+                let p = parts[i];
+                if (i === parts.length - 1) cur[p] = f.is_dir ? {} : null;
+                else { if (!cur[p]) cur[p] = {}; cur = cur[p]; }
+              }
+            });
+            allFilesTree[baseName] = tree;
+        } catch(e) { }
+      }
 
-      // Auto-open last cached file or default view
-      if (base === 'schedules') {
-          if (window.fileEditorCache[base]) {
-              editFile(base, window.fileEditorCache[base].path);
+      function buildHtml(node, prefix = "", baseName) {
+        let html = "";
+        const renameIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16M8 4h8M8 20h8"/></svg>`;
+        
+        for (let k in node) {
+          let path = prefix ? prefix + "/" + k : k;
+          if (node[k] === null) {
+            html += `<li class="tree-item" draggable="true" data-base="${baseName}" data-path="${esc(path)}" onclick="editFile('${baseName}', '${esc(path)}')">
+            <span class="tree-label" title="${k}">📄 ${k}</span>
+            <div class="tree-actions">
+              <span onclick="event.stopPropagation(); renameModal('${baseName}', '${esc(path)}')">${renameIcon}</span>
+              <span class="del" onclick="event.stopPropagation(); deleteFile('${baseName}', '${esc(path)}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+            </div>
+          </li>`;
           } else {
-              loadCronJobs();
+            let stateKey = `files_${baseName}`;
+            if (!state.openFolders[stateKey]) state.openFolders[stateKey] = new Set(['']);
+            let isOpen = state.openFolders[stateKey].has(path) ? 'open' : '';
+            html += `<details ${isOpen}>
+              <summary class="tree-item" draggable="true" data-base="${baseName}" data-path="${esc(path)}">
+                <span class="tree-label folder-label" title="${k}">${k}</span>
+                <div class="tree-actions">
+                  <span onclick="event.preventDefault(); newFileModal('${baseName}', '${esc(path)}')" title="New in Folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m-7-7h14"/></svg></span>
+                  <span onclick="event.preventDefault(); renameModal('${baseName}', '${esc(path)}')">${renameIcon}</span>
+                  <span class="del" onclick="event.preventDefault(); deleteFile('${baseName}', '${esc(path)}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+                </div>
+              </summary>
+              <ul>${buildHtml(node[k], path, baseName)}</ul>
+            </details>`;
           }
-      } else {
-          if (window.fileEditorCache[base]) {
-              editFile(base, window.fileEditorCache[base].path);
-          }
+        }
+        return html;
+      }
+
+      let subHtml = `<div class="file-tree">`;
+      for (let baseName in allFilesTree) {
+        let stateKey = `files_${baseName}`;
+        if (!state.openFolders[stateKey]) state.openFolders[stateKey] = new Set(['']);
+        let isOpen = state.openFolders[stateKey].has('') ? 'open' : '';
+        subHtml += `
+          <div>
+            <details ${isOpen}>
+              <summary class="tree-item root-item" data-base="${baseName}" data-path="">
+                <span class="tree-label folder-label" style="text-transform: capitalize;">${baseName}</span>
+                <div class="tree-actions">
+                  <span onclick="event.preventDefault(); newFileModal('${baseName}', '')" title="New file/folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m-7-7h14"/></svg></span>
+                </div>
+              </summary>
+              <ul>${buildHtml(allFilesTree[baseName], "", baseName) || `<i class="text-muted ml-6 text-sm">&nbsp&nbspempty folder</i>`}</ul>
+            </details>
+          </div>
+        `;
+      }
+      subHtml += `</div>`;
+
+      document.getElementById('sub-sidebar').innerHTML = subHtml;
+
+      if (!window.activeEditor) {
+        document.getElementById('pane-content').innerHTML = ``;
+        document.getElementById('pane-header').innerHTML = `<h2>Files</h2>`;
+      }
+
+      bindFileTreeDnD();
+
+      if (!window.activeEditor && window.fileEditorCache['files_active']) {
+          let cache = window.fileEditorCache['files_active'];
+          editFile(cache.base, cache.path);
       }
     }
 
     const extMap = { 'js': 'javascript', 'ts': 'typescript', 'py': 'python', 'sh': 'bash', 'md': 'markdown' };
 
 async function editFile(base, path) {
-    // If opening a new file within the same section, warn if the active file is unsaved
     if (window.activeEditor && window.activeEditor.path !== path) {
         if (window.activeEditor.editor && window.activeEditor.editor.value !== window.activeEditor.originalContent) {
             if (!confirm("You have unsaved changes in the current file. Discard them?")) return;
@@ -1776,7 +1764,7 @@ async function editFile(base, path) {
     if (window.activeEditor && window.activeEditor.element && window.activeEditor.element.parentNode) {
         window.activeEditor.element.parentNode.removeChild(window.activeEditor.element);
     }
-    window.activeEditor = null; // Clear the active editor so async/sync event handlers don't use stale data
+    window.activeEditor = null; 
     
     document.querySelectorAll('.sub-sidebar .sub-item, .sub-sidebar .tree-item').forEach(el => el.classList.remove('active'));
     let activeItem = document.querySelector(`.sub-sidebar .tree-item[data-path="${esc(path)}"]`);
@@ -1806,24 +1794,23 @@ async function editFile(base, path) {
         return;
     }
     
-    document.getElementById('pane-content').innerHTML = ''; // Clear non-editor content
+    document.getElementById('pane-content').innerHTML = '';
 
-    // We are returning to the last file left open in this section, restore from cache
-    if (window.fileEditorCache[base] && window.fileEditorCache[base].path === path) {
-        let cache = window.fileEditorCache[base];
+    let cacheKey = base + "_" + path;
+    window.fileEditorCache['files_active'] = { base: base, path: path };
+
+    if (window.fileEditorCache[cacheKey]) {
+        let cache = window.fileEditorCache[cacheKey];
         document.getElementById('pane-content').appendChild(cache.element);
         window.activeEditor = cache;
-        window.editor = cache.editor; // restore globally
+        window.editor = cache.editor;
         
         const btn = document.getElementById('btn-save-file');
         if (btn) btn.disabled = (cache.editor.value === cache.originalContent);
         return;
     }
 
-    // Otherwise, fetch and instantiate a new editor
     const res = await api(`/files?base=${base}&path=${path}`);
-    
-    // Normalize line endings to avoid false positive change detections
     let normalizedContent = (res.content || '').replace(/\r\n/g, '\n');
     
     let ext = path.split('.').pop().toLowerCase();
@@ -1847,7 +1834,6 @@ async function editFile(base, path) {
     
     let isDark = edTheme === 'dark' || (edTheme === 'auto' && adminTheme === 'dark');
 
-    // Pre-initialize activeEditor so the sync onUpdate event captures the correct originalContent immediately
     window.activeEditor = {
         base: base,
         path: path,
@@ -1876,8 +1862,7 @@ async function editFile(base, path) {
         editorWrapper.classList.add('editor-dark');
     }
     
-    // Save to cache for this specific section (base)
-    window.fileEditorCache[base] = window.activeEditor;
+    window.fileEditorCache[cacheKey] = window.activeEditor;
 }
 
 function showApiDocs() {
@@ -1970,8 +1955,8 @@ function showApiDocs() {
         await api(`/files?base=${base}`, { method: 'POST', body: { path: path, content: content, is_dir: false } });
         
         if (window.activeEditor) window.activeEditor.originalContent = content;
-        if (window.fileEditorCache[base] && window.fileEditorCache[base].path === path) {
-            window.fileEditorCache[base].originalContent = content;
+        if (window.fileEditorCache[base + "_" + path]) {
+            window.fileEditorCache[base + "_" + path].originalContent = content;
         }
         btn.innerText = "Save changes";
     } catch (err) {
@@ -1985,18 +1970,20 @@ async function deleteFile(base, path) {
     if (confirm('Delete?')) {
         await api(`/files?base=${base}&path=${path}`, { method: 'DELETE' });
         
-        // Ensure cache is destroyed if we delete the file we are currently tracking
-        if (window.fileEditorCache[base] && window.fileEditorCache[base].path === path) {
+        let cacheKey = base + "_" + path;
+        if (window.fileEditorCache[cacheKey]) {
             if (window.activeEditor && window.activeEditor.path === path) {
                 if (window.activeEditor.element && window.activeEditor.element.parentNode) {
                     window.activeEditor.element.parentNode.removeChild(window.activeEditor.element);
                 }
                 window.activeEditor = null;
+                document.getElementById('pane-content').innerHTML = '';
+                document.getElementById('pane-header').innerHTML = '';
             }
-            delete window.fileEditorCache[base];
+            delete window.fileEditorCache[cacheKey];
         }
         
-        loadFiles(base);
+        loadAllFiles();
     }
 }
     
@@ -2017,7 +2004,7 @@ async function deleteFile(base, path) {
       }
       
       if (btn) btn.innerText = 'Create';
-      loadFiles(base);
+      loadAllFiles();
     }
 
     window.toggleNewFileInput = function() {
@@ -2032,9 +2019,7 @@ async function deleteFile(base, path) {
     }
     
     function newFileModal(base, targetFolder) {
-      let folderName = base;
-      if (base === 'schedules') folderName = "scripts";
-      let title = targetFolder ? `New in ${folderName}/${targetFolder}` : `New in ${folderName}`;
+      let title = targetFolder ? `New in ${base}/${targetFolder}` : `New in ${base}`;
       let html = `<div class="form-field">
         <select id="nf-type" onchange="toggleNewFileInput()">
           <option value="file">File</option>
@@ -2100,7 +2085,7 @@ async function deleteFile(base, path) {
           }
           let template = "return {\n\tpre_insert = function(req, item)\n\t\t-- Modify item before insert\n\t\treturn item\n\tend,\n\t\n\t-- post_update = function(req, item)\n\t-- \t\n\t-- end\n}";
           content = template.replace(/\t/g, indent);
-        } else if (base === 'schedules') {
+        } else if (base === 'scripts') {
           content = "log.info(\"Hello, world!\")";
         } else if (type === 'html') {
           content = "<h1>Hello, world!</h1>";
@@ -2109,7 +2094,7 @@ async function deleteFile(base, path) {
 
       await api(`/files?base=${base}`, { method: 'POST', body: { path: path, content: content, is_dir: isDir } });
       closeModal();
-      loadFiles(base);
+      loadAllFiles();
     }
 
     // ---------- cron jobs ----------
@@ -2135,7 +2120,7 @@ async function deleteFile(base, path) {
     }
 
     async function runScriptModal() {
-      const files = await api('/files?base=schedules') || [];
+      const files = await api('/files?base=scripts') || [];
       const fileOptions = files.filter(f => !f.is_dir).map(f =>
         `<option value="${f.path}">${f.path}</option>`
       ).join('');
@@ -2249,7 +2234,7 @@ async function deleteFile(base, path) {
       let d = meta.d || '', h = meta.h || '', m = meta.m || '', s = meta.s || '';
       let preventOverlap = id ? (j.prevent_overlap === true) : false;
 
-      const files = await api('/files?base=schedules') ||[];
+      const files = await api('/files?base=scripts') ||[];
       const fileOptions = files.filter(f => !f.is_dir).map(f =>
         `<option value="${f.path}" ${j.script_path === f.path ? 'selected' : ''}>${f.path}</option>`
       ).join('');
@@ -2340,7 +2325,6 @@ async function deleteFile(base, path) {
 
     async function deleteCron(id) { if (confirm("Delete Job?")) { await api(`/crons?id=${id}`, { method: 'DELETE' }); loadCronJobs(); } }
 
-    // modal utils
     function openModal(title, html) { document.getElementById('modal-title').innerText = title; document.getElementById('modal-body').innerHTML = html; document.getElementById('modal').style.display = 'flex'; }
     function closeModal() { document.getElementById('modal').style.display = 'none'; document.getElementById('rel-modal').style.display = 'none'; }
 

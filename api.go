@@ -93,13 +93,13 @@ func (env *Environment) handleAdminFilesRename(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	baseDir := env.PublicPath
-	permKey := "public"
+	var baseDir string
+	permKey := "files"
 
 	if req.Base == "routes" {
 		baseDir = env.RoutesPath
 		permKey = "routes"
-	} else if req.Base == "schedules" {
+	} else if req.Base == "schedules" || req.Base == "scripts" {
 		baseDir = env.ScriptsPath
 		permKey = "schedules"
 	} else if req.Base == "uploads" {
@@ -108,15 +108,33 @@ func (env *Environment) handleAdminFilesRename(w http.ResponseWriter, r *http.Re
 	} else if req.Base == "middleware" {
 		baseDir = env.MiddlewarePath
 		permKey = "routes"
+	} else if req.Base == "public" {
+		baseDir = env.PublicPath
+		permKey = "public"
+	} else {
+		for _, d := range appSettings.CustomDirs {
+			if req.Base == d {
+				baseDir = resolvePath(rootDir, d, d)
+				permKey = "files"
+				break
+			}
+		}
+	}
+
+	if baseDir == "" {
+		http.Error(w, "Invalid base directory", 400)
+		return
 	}
 
 	if permKey == "uploads" {
 		p := getPermissions(r)
 		if p == nil || p["collections"] == nil {
-			http.Error(w, "Forbidden", 403)
-			return
+			if !hasPermission(r, "files") && !hasPermission(r, "settings") {
+				http.Error(w, "Forbidden", 403)
+				return
+			}
 		}
-	} else if !hasPermission(r, permKey) {
+	} else if !hasPermission(r, permKey) && !hasPermission(r, "files") && !hasPermission(r, "settings") {
 		http.Error(w, "Forbidden", 403)
 		return
 	}
@@ -1041,13 +1059,39 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 
 func (env *Environment) handleAdminFiles(w http.ResponseWriter, r *http.Request) {
 	base := r.URL.Query().Get("base")
-	baseDir := env.PublicPath
-	permKey := "public"
+
+	if base == "root" || base == "" {
+		if r.Method == "GET" {
+			if !hasPermission(r, "files") && !hasPermission(r, "settings") && !hasPermission(r, "routes") && !hasPermission(r, "public") && !hasPermission(r, "schedules") {
+				http.Error(w, "Forbidden", 403)
+				return
+			}
+			type FileInfo struct {
+				Path  string `json:"path"`
+				IsDir bool   `json:"is_dir"`
+			}
+			var files []FileInfo
+			files = append(files, FileInfo{Path: "routes", IsDir: true})
+			files = append(files, FileInfo{Path: "middleware", IsDir: true})
+			files = append(files, FileInfo{Path: "public", IsDir: true})
+			files = append(files, FileInfo{Path: "scripts", IsDir: true})
+			files = append(files, FileInfo{Path: "uploads", IsDir: true})
+			for _, d := range appSettings.CustomDirs {
+				files = append(files, FileInfo{Path: d, IsDir: true})
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(files)
+			return
+		}
+	}
+
+	var baseDir string
+	permKey := "files"
 
 	if base == "routes" {
 		baseDir = env.RoutesPath
 		permKey = "routes"
-	} else if base == "schedules" {
+	} else if base == "schedules" || base == "scripts" {
 		baseDir = env.ScriptsPath
 		permKey = "schedules"
 	} else if base == "uploads" {
@@ -1056,15 +1100,33 @@ func (env *Environment) handleAdminFiles(w http.ResponseWriter, r *http.Request)
 	} else if base == "middleware" {
 		baseDir = env.MiddlewarePath
 		permKey = "routes"
+	} else if base == "public" {
+		baseDir = env.PublicPath
+		permKey = "public"
+	} else {
+		for _, d := range appSettings.CustomDirs {
+			if base == d {
+				baseDir = resolvePath(rootDir, d, d)
+				permKey = "files"
+				break
+			}
+		}
+	}
+
+	if baseDir == "" {
+		http.Error(w, "Invalid base directory", 400)
+		return
 	}
 
 	if permKey == "uploads" {
 		p := getPermissions(r)
 		if p == nil || p["collections"] == nil {
-			http.Error(w, "Forbidden", 403)
-			return
+			if !hasPermission(r, "files") && !hasPermission(r, "settings") {
+				http.Error(w, "Forbidden", 403)
+				return
+			}
 		}
-	} else if !hasPermission(r, permKey) {
+	} else if !hasPermission(r, permKey) && !hasPermission(r, "files") && !hasPermission(r, "settings") {
 		http.Error(w, "Forbidden", 403)
 		return
 	}

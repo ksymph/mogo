@@ -101,6 +101,37 @@ type Settings struct {
 
 	StagingEnabled bool `json:"staging_enabled"`
 	StagingPort    int  `json:"staging_port"`
+
+	RoutesPath     string   `json:"routes_path"`
+	MiddlewarePath string   `json:"middleware_path"`
+	PublicPath     string   `json:"public_path"`
+	ScriptsPath    string   `json:"scripts_path"`
+	UploadsPath    string   `json:"uploads_path"`
+	CustomDirs     []string `json:"custom_dirs"`
+}
+
+func resolvePath(baseDir, customPath, defaultName string) string {
+	if customPath == "" {
+		return filepath.Join(baseDir, defaultName)
+	}
+	if filepath.IsAbs(customPath) {
+		return customPath
+	}
+	return filepath.Join(baseDir, customPath)
+}
+
+func applyPathsToEnv(env *Environment, s Settings) {
+	env.RoutesPath = resolvePath(env.BaseDir, s.RoutesPath, "routes")
+	env.MiddlewarePath = resolvePath(env.BaseDir, s.MiddlewarePath, "middleware")
+	env.PublicPath = resolvePath(env.BaseDir, s.PublicPath, "public")
+	env.ScriptsPath = resolvePath(env.BaseDir, s.ScriptsPath, "scripts")
+	env.UploadsPath = resolvePath(env.BaseDir, s.UploadsPath, "uploads")
+
+	os.MkdirAll(env.RoutesPath, os.ModePerm)
+	os.MkdirAll(env.MiddlewarePath, os.ModePerm)
+	os.MkdirAll(env.PublicPath, os.ModePerm)
+	os.MkdirAll(env.ScriptsPath, os.ModePerm)
+	os.MkdirAll(env.UploadsPath, os.ModePerm)
 }
 
 func loadSettings() {
@@ -120,6 +151,11 @@ func loadSettings() {
 		json.Unmarshal(b, &appSettings)
 	}
 
+	applyPathsToEnv(ProdEnv, appSettings)
+	for _, dir := range appSettings.CustomDirs {
+		os.MkdirAll(resolvePath(rootDir, dir, dir), os.ModePerm)
+	}
+
 	ProdEnv.initLuaPool()
 }
 
@@ -127,6 +163,12 @@ func saveSettings(s Settings) {
 	b, _ := json.MarshalIndent(s, "", "  ")
 	os.WriteFile(filepath.Join(ProdEnv.DataPath, "settings.json"), b, 0644)
 	appSettings = s
+
+	applyPathsToEnv(ProdEnv, appSettings)
+	for _, dir := range appSettings.CustomDirs {
+		os.MkdirAll(resolvePath(rootDir, dir, dir), os.ModePerm)
+	}
+
 	ProdEnv.initLuaPool()
 	if StagingEnv != nil {
 		StagingEnv.initLuaPool()
