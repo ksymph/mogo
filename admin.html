@@ -1790,9 +1790,9 @@ let relSearchTimeout;
 
       document.getElementById('sub-sidebar').innerHTML = subHtml;
 
-      if (!window.activeEditor) {
+if (!window.activeEditor) {
         document.getElementById('pane-content').innerHTML = ``;
-        document.getElementById('pane-header').innerHTML = `<h2>Files</h2>`;
+        document.getElementById('pane-header').innerHTML = `<h2>Files</h2><div><button class="btn secondary" onclick="showApiDocs()">Lua API Reference</button></div>`;
       }
 
       bindFileTreeDnD();
