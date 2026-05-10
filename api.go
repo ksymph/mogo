@@ -1023,9 +1023,21 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 			json.NewDecoder(r.Body).Decode(&data)
 			data["updated"] = time.Now().Unix()
 
+			if newID, ok := data["id"]; ok {
+				newIDStr := fmt.Sprintf("%v", newID)
+				if newIDStr != id {
+					var exists int
+					env.DataDBConn.QueryRow("SELECT COUNT(*) FROM "+collection+" WHERE id = ?", newIDStr).Scan(&exists)
+					if exists > 0 {
+						http.Error(w, `{"error":"ID already exists"}`, 409)
+						return
+					}
+				}
+			}
+
 			cols, args := []string{}, []any{}
 			for k, v := range data {
-				if k == "id" || k == "created" {
+				if k == "created" {
 					continue
 				}
 				cols = append(cols, k+" = ?")

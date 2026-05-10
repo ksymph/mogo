@@ -661,6 +661,12 @@ function renderCollectionTable() {
 function itemModal(id = null) {
       const item = id ? state.data.find(d => d.id == id) : {};
       let html = ``;
+
+      if (id) {
+        html += `<div class="form-field"><input type="text" id="f_id" value="${item.id !== undefined ? item.id : ''}" placeholder=" " oninput="window.checkItemID(${id})"><label>id</label></div>`;
+        html += `<div id="id-error" style="color:var(--danger);font-size:0.85rem;display:none;">ID already exists</div>`;
+      }
+
       state.schema.forEach(f => {
         if (f.name === 'id' || f.name === 'created' || f.name === 'updated') return;
         let val = item[f.name] !== undefined && item[f.name] !== null ? item[f.name] : '';
@@ -734,9 +740,42 @@ function itemModal(id = null) {
       document.getElementById('modal').style.display = 'flex';
     }
 
-async function saveItem(id) {
+    window.checkItemID = function(origID) {
+      let el = document.getElementById('f_id');
+      let err = document.getElementById('id-error');
+      let btn = document.getElementById('modal-confirm-btn');
+      let newID = el.value.trim();
+      if (newID !== '' && newID != origID && state.data.some(d => d.id == newID)) {
+        err.style.display = 'block';
+        el.style.boxShadow = 'inset 0 0 0 2px var(--danger)';
+        btn.disabled = true;
+      } else {
+        err.style.display = 'none';
+        el.style.boxShadow = '';
+        btn.disabled = false;
+      }
+    };
+
+    async function saveItem(id) {
       let payload = {};
       let hasError = false;
+
+      if (id) {
+        let idEl = document.getElementById('f_id');
+        if (idEl) {
+          let newID = idEl.value.trim();
+          if (newID !== '' && newID != id && state.data.some(d => d.id == newID)) {
+            document.getElementById('id-error').style.display = 'block';
+            idEl.style.boxShadow = 'inset 0 0 0 2px var(--danger)';
+            document.getElementById('modal-confirm-btn').disabled = true;
+            return;
+          }
+          document.getElementById('id-error').style.display = 'none';
+          idEl.style.boxShadow = '';
+          payload.id = newID;
+        }
+      }
+
       state.schema.forEach(f => {
         if (f.name === 'id' || f.name === 'created' || f.name === 'updated') return;
         let el = document.getElementById(`f_${f.name}`);
