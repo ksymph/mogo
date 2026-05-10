@@ -744,9 +744,13 @@ function itemModal(id = null) {
       
       buttonsHtml += `<button class="btn danger" onclick="closeModal()">Cancel</button></div>`;
 
-      document.getElementById('modal-title').innerText = `${id ? 'Edit' : 'New'} Item`;
+document.getElementById('modal-title').innerText = `${id ? 'Edit' : 'New'} Item`;
       document.getElementById('modal-body').innerHTML = html + buttonsHtml;
       document.getElementById('modal').style.display = 'flex';
+      setTimeout(() => {
+        let firstInput = document.querySelector('#modal-body input:not([readonly]), #modal-body textarea:not([readonly])');
+        if (firstInput) firstInput.focus();
+      }, 50);
     }
 
     window.checkItemID = function(origID) {
