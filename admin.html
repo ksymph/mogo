@@ -610,7 +610,7 @@ function renderCollectionTable() {
       document.getElementById('pane-content').innerHTML = `
       <div style="overflow-x:auto">
         <table class="data-table">
-          <thead><tr><th style="width:30px"></th>${ths}</tr></thead>
+          <thead><tr><th style="width:30px"><input type="checkbox" onchange="toggleSelectAll(this.checked)"></th>${ths}</tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -626,6 +626,15 @@ function renderCollectionTable() {
     function clearSelection() {
       state.selected.clear();
       document.getElementById('selection-popup').classList.remove('show');
+      renderCollectionTable();
+    }
+
+    function toggleSelectAll(checked) {
+      state.selected.clear();
+      if (checked) {
+        state.data.forEach(d => state.selected.add(String(d.id)));
+      }
+      document.getElementById('selection-popup').classList.toggle('show', state.selected.size > 0);
       renderCollectionTable();
     }
 
