@@ -842,6 +842,7 @@ async function saveItem(id) {
         <div class="hbox schema-row" data-index="${i}" style="background: var(--card-bg)">
           <div class="handle" style="cursor:grab" onpointerdown="startDrag(event, ${i})">⣿</div>
           <div class="form-field" style="flex:1"><input value="${f.name}" onchange="_tempSchema[${i}].name=this.value" ${f.name === 'id' ? 'disabled' : ''} placeholder=" "><label>Field name</label></div>
+          ${baseType === 'relation' ? `<select onchange="_tempSchema[${i}].type='relation:'+this.value">${allCols}</select>` : ''}
           <select onchange="if(this.value==='relation'){ const firstCol = state.collections[0]; _tempSchema[${i}].type = firstCol ? 'relation:' + firstCol.name : 'relation:'; } else { _tempSchema[${i}].type=this.value }; renderSchemaModal()" ${f.name === 'id' ? 'disabled' : ''}>
             <option value="string" ${baseType === 'string' ? 'selected' : ''}>String</option>
             <option value="number" ${baseType === 'number' ? 'selected' : ''}>Number</option>
@@ -850,7 +851,6 @@ async function saveItem(id) {
             <option value="json" ${baseType === 'json' ? 'selected' : ''}>JSON</option>
             <option value="relation" ${baseType === 'relation' ? 'selected' : ''}>Relation</option>
           </select>
-          ${baseType === 'relation' ? `<select onchange="_tempSchema[${i}].type='relation:'+this.value">${allCols}</select>` : ''}
           <button class="btn danger" style="width: 1.5rem; height: 1.5rem; padding: 0.15rem 0 0 0;" ${f.name === 'id' ? 'disabled' : 'onclick="_tempSchema.splice(' + i + ',1); renderSchemaModal()"'}>✕</button>
         </div>
       `}).join('');
@@ -1051,13 +1051,13 @@ async function saveItem(id) {
       localStorage.setItem('mogo_editor_wordWrap', document.getElementById('ed_wordWrap').checked);
     };
 
-    async function loadSettings(sub = 'admin') {
+    async function loadSettings(sub = 'app') {
       state.sub = sub;
 
       let subSidebarHtml = `
-        <div class="sub-item ${sub === 'admin' ? 'active' : ''}" onclick="loadSettings('admin')">Admin UI Settings</div>
         <div class="sub-item ${sub === 'app' ? 'active' : ''}" onclick="loadSettings('app')">App Settings</div>
-        <div class="sub-item ${sub === 'backups' ? 'active' : ''}" onclick="loadSettings('backups')">Backup Manager</div>
+        <div class="sub-item ${sub === 'admin' ? 'active' : ''}" onclick="loadSettings('admin')">Admin UI Settings</div>
+        <div class="sub-item ${sub === 'backups' ? 'active' : ''}" onclick="loadSettings('backups')">Backup</div>
       `;
       if (state.environment !== 'staging') {
           subSidebarHtml += `<div class="sub-item ${sub === 'keys' ? 'active' : ''}" onclick="loadSettings('keys')">API Keys</div>`;
@@ -1145,11 +1145,8 @@ async function loadAppSettings() {
       
       <div class="modal">
         <h3>Logs</h3>
-        <div class="hbox">
-            <div class="form-field"><input type="number" id="s-log-ret" value="${s.log_retention_days || 30}" placeholder=" "><label>Keep for (days)</label></div>
-            <div class="form-field"><input type="number" id="s-log-max" value="${s.max_log_count_per_req || 100}" placeholder=" "><label>Max Logs Per Request</label></div>
-        </div>
-        <div class="hint">Prevents infinite loops from flooding the database.</div>
+        <div class="form-field"><input type="number" id="s-log-ret" value="${s.log_retention_days || 30}" placeholder=" "><label>Keep for (days)</label></div>
+        <div class="form-field"><input type="number" id="s-log-max" value="${s.max_log_count_per_req || 100}" placeholder=" "><label>Max Logs Per Request</label></div>
       </div>
 
       <div class="modal">
