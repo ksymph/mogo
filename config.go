@@ -96,6 +96,7 @@ type Settings struct {
 
 	LogRetentionDays  int  `json:"log_retention_days"`
 	MaxLogCountPerReq int  `json:"max_log_count_per_req"`
+	MaxLogCount       int  `json:"max_log_count"`
 	UnsafeLua         bool `json:"unsafe_lua"`
 	Port              int  `json:"port"`
 
@@ -140,6 +141,7 @@ func loadSettings() {
 	appSettings.AdminMaxRetries = 5
 	appSettings.LogRetentionDays = 30
 	appSettings.MaxLogCountPerReq = 100
+	appSettings.MaxLogCount = 10000
 	appSettings.Port = 8080
 	appSettings.StagingPort = 8090
 	appSettings.StagingEnabled = false

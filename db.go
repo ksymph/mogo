@@ -99,6 +99,14 @@ func (env *Environment) appLog(level, scriptPath, origin, message string) {
 	if err != nil {
 		log.Printf("Failed to write to app log: %v", err)
 	}
+
+	maxLogs := appSettings.MaxLogCount
+	if maxLogs > 0 {
+		_, err := env.LogDBConn.Exec(fmt.Sprintf("DELETE FROM _logs WHERE id NOT IN (SELECT id FROM _logs ORDER BY id DESC LIMIT %d)", maxLogs))
+		if err != nil {
+			log.Printf("Failed to trim logs by count: %v", err)
+		}
+	}
 }
 
 func (env *Environment) initSystemTables() {

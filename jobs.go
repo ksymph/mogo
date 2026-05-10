@@ -31,7 +31,7 @@ func (env *Environment) initCron() {
 	}
 	env.Scheduler = s
 
-	s.NewJob(
+s.NewJob(
 		gocron.DailyJob(1, gocron.NewAtTimes(gocron.NewAtTime(0, 0, 0))),
 		gocron.NewTask(func() {
 			retention := appSettings.LogRetentionDays

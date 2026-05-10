@@ -513,7 +513,7 @@
       document.getElementById('selection-popup').classList.remove('show');
 
       if (tab === 'collections') loadCollections();
-      if (tab === 'settings') loadSettings('admin');
+      if (tab === 'settings') loadSettings('app');
       if (tab === 'staging') loadStaging();
       if (tab === 'logs') loadLogs();
       if (tab === 'schedules') loadCronJobs();
@@ -1147,6 +1147,7 @@ async function loadAppSettings() {
         <h3>Logs</h3>
         <div class="form-field"><input type="number" id="s-log-ret" value="${s.log_retention_days || 30}" placeholder=" "><label>Keep for (days)</label></div>
         <div class="form-field"><input type="number" id="s-log-max" value="${s.max_log_count_per_req || 100}" placeholder=" "><label>Max Logs Per Request</label></div>
+        <div class="form-field"><input type="number" id="s-log-max-total" value="${s.max_log_count || 10000}" placeholder=" " min="0"><label>Max Total Logs (0 for unlimited)</label></div>
       </div>
 
       <div class="modal">
@@ -1242,6 +1243,7 @@ async function loadAppSettings() {
         admin_max_retries: parseInt(document.getElementById('s-adm-retries').value, 10),
         log_retention_days: parseInt(document.getElementById('s-log-ret').value, 10),
         max_log_count_per_req: parseInt(document.getElementById('s-log-max').value, 10) || 100,
+        max_log_count: parseInt(document.getElementById('s-log-max-total').value, 10) || 0,
         unsafe_lua: document.getElementById('set_unsafe_lua').checked,
       };
       
