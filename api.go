@@ -648,7 +648,7 @@ func (env *Environment) handleAdminCrons(w http.ResponseWriter, r *http.Request)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method == "GET" {
-		rows, _ := env.ConfigDBConn.Query("SELECT id, name, schedule, schedule_meta, script_path, active, created FROM _cron_jobs ORDER BY id DESC")
+		rows, _ := env.ConfigDBConn.Query("SELECT id, name, schedule, schedule_meta, script_path, active, prevent_overlap, created FROM _cron_jobs ORDER BY id DESC")
 		defer rows.Close()
 		nextRuns := make(map[int]string)
 		if env.Scheduler != nil {
