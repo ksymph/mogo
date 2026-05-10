@@ -86,6 +86,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 			colSet := env.getCollectionSet()
 			results, err := queryDB(env.DataDBConn, q, whereVals...)
 			if err != nil {
+				env.logLuaError(L, err.Error())
 				L.Push(L.NewTable())
 				return 1
 			}
@@ -232,6 +233,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 			q := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", cName, strings.Join(cols, ","), strings.Join(placeholders, ","))
 			res, err := env.DataDBConn.Exec(q, args...)
 			if err != nil {
+				env.logLuaError(L, err.Error())
 				L.Push(lua.LNil)
 				L.Push(lua.LString(err.Error()))
 				return 2
@@ -281,6 +283,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 			selectQ := fmt.Sprintf("SELECT id FROM %s WHERE %s", cName, strings.Join(whereCols, " AND "))
 			rows, err := env.DataDBConn.Query(selectQ, whereVals...)
 			if err != nil {
+				env.logLuaError(L, err.Error())
 				L.Push(lua.LBool(false))
 				L.Push(lua.LString(err.Error()))
 				return 2
@@ -362,6 +365,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 				updateQ := fmt.Sprintf("UPDATE %s SET %s WHERE id = ?", cName, strings.Join(setCols, ", "))
 				_, err = env.DataDBConn.Exec(updateQ, setVals...)
 				if err != nil {
+					env.logLuaError(L, err.Error())
 					resultObj.RawSetString("result", lua.LBool(false))
 					resultObj.RawSetString("err", lua.LString(err.Error()))
 					results.Append(resultObj)
@@ -414,6 +418,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 			selectQ := fmt.Sprintf("SELECT id FROM %s WHERE %s", cName, strings.Join(whereCols, " AND "))
 			rows, err := env.DataDBConn.Query(selectQ, whereVals...)
 			if err != nil {
+				env.logLuaError(L, err.Error())
 				L.Push(lua.LBool(false))
 				L.Push(lua.LString(err.Error()))
 				return 2
@@ -464,6 +469,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 
 				_, err = env.DataDBConn.Exec(fmt.Sprintf("DELETE FROM %s WHERE id = ?", cName), id)
 				if err != nil {
+					env.logLuaError(L, err.Error())
 					resultObj.RawSetString("result", lua.LBool(false))
 					resultObj.RawSetString("err", lua.LString(err.Error()))
 					results.Append(resultObj)
@@ -520,6 +526,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 			if strings.HasPrefix(queryUpper, "SELECT") || strings.HasPrefix(queryUpper, "PRAGMA") {
 				results, err := queryDB(env.DataDBConn, query, args...)
 				if err != nil {
+					env.logLuaError(L, err.Error())
 					L.Push(lua.LNil)
 					L.Push(lua.LString(err.Error()))
 					return 2
@@ -533,6 +540,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 			} else {
 				res, err := env.DataDBConn.Exec(query, args...)
 				if err != nil {
+					env.logLuaError(L, err.Error())
 					L.Push(lua.LBool(false))
 					L.Push(lua.LString(err.Error()))
 					return 2
@@ -550,6 +558,17 @@ func (env *Environment) injectDB(L *lua.LState) {
 	}))
 	L.SetMetatable(dbTbl, dbMeta)
 	L.SetGlobal("db", dbTbl)
+}
+
+func (env *Environment) logLuaError(L *lua.LState, message string) {
+	ctx := L.Context()
+	if ctx != nil {
+		if rl, ok := ctx.Value(ctxKeyLogger{}).(*RequestLogger); ok {
+			rl.Log("error", getScript(L), "lua", message)
+			return
+		}
+	}
+	env.appLog("error", getScript(L), "system", "[lua] "+message)
 }
 
 func getScript(L *lua.LState) string {
