@@ -34,7 +34,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 				queryTbl := L.CheckTable(2)
 				if queryMap, ok := luaValueToInterface(queryTbl).(map[string]any); ok {
 					for k, v := range queryMap {
-						whereCols = append(whereCols, fmt.Sprintf("%s = ?", k))
+						whereCols = append(whereCols, fmt.Sprintf("`%s` = ?", k))
 						whereVals = append(whereVals, v)
 					}
 				}
@@ -53,14 +53,19 @@ func (env *Environment) injectDB(L *lua.LState) {
 				sortBy = L.CheckString(4)
 			}
 
-			orderClause := "ORDER BY id ASC"
-			if sortBy != "" {
-				sortCol := sortBy
-				if !strings.Contains(strings.ToUpper(sortCol), " ASC") && !strings.Contains(strings.ToUpper(sortCol), " DESC") {
-					sortCol += " ASC"
+		orderClause := "ORDER BY id ASC"
+		if sortBy != "" {
+			sortCol := sortBy
+			if strings.Contains(strings.ToUpper(sortCol), " ASC") || strings.Contains(strings.ToUpper(sortCol), " DESC") {
+				idx := strings.LastIndex(sortCol, " ")
+				if idx > 0 {
+					sortCol = "`" + sortCol[:idx] + "`" + sortCol[idx:]
 				}
-				orderClause = "ORDER BY " + sortCol
+			} else {
+				sortCol = "`" + sortCol + "` ASC"
 			}
+			orderClause = "ORDER BY " + sortCol
+		}
 
 			if reverseSort {
 				parts := strings.Split(orderClause[9:], ",")
@@ -81,7 +86,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 				limitClause = fmt.Sprintf("LIMIT %d", limit)
 			}
 
-			q := fmt.Sprintf("SELECT * FROM %s WHERE %s %s %s", cName, strings.Join(whereCols, " AND "), orderClause, limitClause)
+			q := fmt.Sprintf("SELECT * FROM `%s` WHERE %s %s %s", cName, strings.Join(whereCols, " AND "), orderClause, limitClause)
 
 			colSet := env.getCollectionSet()
 			results, err := queryDB(env.DataDBConn, q, whereVals...)
@@ -221,7 +226,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 
 			cols, placeholders, args := []string{}, []string{}, []any{}
 			for k, v := range data {
-				cols = append(cols, k)
+				cols = append(cols, "`"+k+"`")
 				placeholders = append(placeholders, "?")
 				switch val := v.(type) {
 				case map[string]any, []any:
@@ -230,7 +235,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 					args = append(args, v)
 				}
 			}
-			q := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", cName, strings.Join(cols, ","), strings.Join(placeholders, ","))
+			q := fmt.Sprintf("INSERT INTO `%s` (%s) VALUES (%s)", cName, strings.Join(cols, ","), strings.Join(placeholders, ","))
 			res, err := env.DataDBConn.Exec(q, args...)
 			if err != nil {
 				env.logLuaError(L, err.Error())
@@ -241,7 +246,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 			id, _ := res.LastInsertId()
 
 			if hooks != nil && hooks.RawGetString("post_insert").Type() == lua.LTFunction {
-				items, _ := queryDB(env.DataDBConn, "SELECT * FROM "+cName+" WHERE id = ?", id)
+				items, _ := queryDB(env.DataDBConn, "SELECT * FROM `"+cName+"` WHERE id = ?", id)
 				if len(items) == 0 {
 					L.Push(lua.LNil)
 					L.Push(lua.LString("[middleware - post_insert] could not retrieve item"))
@@ -277,10 +282,10 @@ func (env *Environment) injectDB(L *lua.LState) {
 
 			whereVals, whereCols := []any{}, []string{"1=1"}
 			for k, v := range queryMap {
-				whereCols = append(whereCols, fmt.Sprintf("%s = ?", k))
+				whereCols = append(whereCols, fmt.Sprintf("`%s` = ?", k))
 				whereVals = append(whereVals, v)
 			}
-			selectQ := fmt.Sprintf("SELECT id FROM %s WHERE %s", cName, strings.Join(whereCols, " AND "))
+			selectQ := fmt.Sprintf("SELECT id FROM `%s` WHERE %s", cName, strings.Join(whereCols, " AND "))
 			rows, err := env.DataDBConn.Query(selectQ, whereVals...)
 			if err != nil {
 				env.logLuaError(L, err.Error())
@@ -302,7 +307,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 				resultObj := L.NewTable()
 				resultObj.RawSetString("id", lua.LNumber(id))
 
-				origItems, err := queryDB(env.DataDBConn, "SELECT * FROM "+cName+" WHERE id = ?", id)
+				origItems, err := queryDB(env.DataDBConn, "SELECT * FROM `"+cName+"` WHERE id = ?", id)
 				if err != nil || len(origItems) == 0 {
 					resultObj.RawSetString("result", lua.LBool(false))
 					resultObj.RawSetString("err", lua.LString("item not found"))
@@ -353,7 +358,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 					if k == "id" || k == "created" {
 						continue
 					}
-					setCols = append(setCols, fmt.Sprintf("%s = ?", k))
+					setCols = append(setCols, fmt.Sprintf("`%s` = ?", k))
 					switch val := v.(type) {
 					case map[string]any, []any:
 						setVals = append(setVals, formatLuaTable(val))
@@ -362,7 +367,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 					}
 				}
 				setVals = append(setVals, id)
-				updateQ := fmt.Sprintf("UPDATE %s SET %s WHERE id = ?", cName, strings.Join(setCols, ", "))
+				updateQ := fmt.Sprintf("UPDATE `%s` SET %s WHERE id = ?", cName, strings.Join(setCols, ", "))
 				_, err = env.DataDBConn.Exec(updateQ, setVals...)
 				if err != nil {
 					env.logLuaError(L, err.Error())
@@ -372,7 +377,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 					continue
 				}
 
-				updatedItems, _ := queryDB(env.DataDBConn, "SELECT * FROM "+cName+" WHERE id = ?", id)
+				updatedItems, _ := queryDB(env.DataDBConn, "SELECT * FROM `"+cName+"` WHERE id = ?", id)
 				if len(updatedItems) == 0 {
 					resultObj.RawSetString("result", lua.LBool(false))
 					resultObj.RawSetString("err", lua.LString("item gone after update"))
@@ -412,10 +417,10 @@ func (env *Environment) injectDB(L *lua.LState) {
 
 			whereVals, whereCols := []any{}, []string{"1=1"}
 			for k, v := range queryMap {
-				whereCols = append(whereCols, fmt.Sprintf("%s = ?", k))
+				whereCols = append(whereCols, fmt.Sprintf("`%s` = ?", k))
 				whereVals = append(whereVals, v)
 			}
-			selectQ := fmt.Sprintf("SELECT id FROM %s WHERE %s", cName, strings.Join(whereCols, " AND "))
+			selectQ := fmt.Sprintf("SELECT id FROM `%s` WHERE %s", cName, strings.Join(whereCols, " AND "))
 			rows, err := env.DataDBConn.Query(selectQ, whereVals...)
 			if err != nil {
 				env.logLuaError(L, err.Error())
@@ -437,7 +442,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 				resultObj := L.NewTable()
 				resultObj.RawSetString("id", lua.LNumber(id))
 
-				origItems, err := queryDB(env.DataDBConn, "SELECT * FROM "+cName+" WHERE id = ?", id)
+				origItems, err := queryDB(env.DataDBConn, "SELECT * FROM `"+cName+"` WHERE id = ?", id)
 				if err != nil || len(origItems) == 0 {
 					resultObj.RawSetString("result", lua.LBool(false))
 					resultObj.RawSetString("err", lua.LString("item not found"))
@@ -467,7 +472,7 @@ func (env *Environment) injectDB(L *lua.LState) {
 					}
 				}
 
-				_, err = env.DataDBConn.Exec(fmt.Sprintf("DELETE FROM %s WHERE id = ?", cName), id)
+				_, err = env.DataDBConn.Exec(fmt.Sprintf("DELETE FROM `%s` WHERE id = ?", cName), id)
 				if err != nil {
 					env.logLuaError(L, err.Error())
 					resultObj.RawSetString("result", lua.LBool(false))

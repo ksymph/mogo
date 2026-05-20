@@ -483,7 +483,7 @@ func (env *Environment) handleStagingSync(w http.ResponseWriter, r *http.Request
 		}
 
 		for _, tc := range targetCollections {
-			targetEnv.DataDBConn.Exec("DROP TABLE IF EXISTS " + tc)
+			targetEnv.DataDBConn.Exec("DROP TABLE IF EXISTS `" + tc + "`")
 		}
 		targetEnv.ConfigDBConn.Exec("DELETE FROM _collections")
 		targetEnv.ConfigDBConn.Exec("DELETE FROM _schema")
@@ -519,7 +519,7 @@ func (env *Environment) handleStagingSync(w http.ResponseWriter, r *http.Request
 			_, err = conn.ExecContext(r.Context(), fmt.Sprintf("ATTACH DATABASE '%s' AS target_db", targetDBPath))
 			if err == nil {
 				for _, c := range collections {
-					conn.ExecContext(r.Context(), fmt.Sprintf("INSERT INTO target_db.%s SELECT * FROM main.%s", c.Name, c.Name))
+					conn.ExecContext(r.Context(), fmt.Sprintf("INSERT INTO target_db.`%s` SELECT * FROM main.`%s`", c.Name, c.Name))
 				}
 				conn.ExecContext(r.Context(), "DETACH DATABASE target_db")
 			}
@@ -865,7 +865,7 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 				if strings.Contains(search, ":") {
 					searchParts := strings.SplitN(search, ":", 2)
 					field, val := searchParts[0], searchParts[1]
-					whereClause += fmt.Sprintf(" AND %s LIKE ?", field)
+					whereClause += fmt.Sprintf(" AND `%s` LIKE ?", field)
 
 					schema := env.getCollectionSchema(collection)
 					var fieldType string
@@ -892,7 +892,7 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 					if len(schema) > 0 {
 						var orClauses []string
 						for _, sf := range schema {
-							orClauses = append(orClauses, fmt.Sprintf("%s LIKE ?", sf.Name))
+							orClauses = append(orClauses, fmt.Sprintf("`%s` LIKE ?", sf.Name))
 							args = append(args, "%"+search+"%")
 						}
 						whereClause += " AND (" + strings.Join(orClauses, " OR ") + ")"
@@ -901,9 +901,9 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 			}
 
 			var total int
-			env.DataDBConn.QueryRow("SELECT COUNT(*) FROM "+collection+" WHERE "+whereClause, args...).Scan(&total)
+			env.DataDBConn.QueryRow("SELECT COUNT(*) FROM `"+collection+"` WHERE "+whereClause, args...).Scan(&total)
 
-			query := "SELECT * FROM " + collection + " WHERE " + whereClause + " ORDER BY id DESC"
+			query := "SELECT * FROM `" + collection + "` WHERE " + whereClause + " ORDER BY id DESC"
 			items, err := queryDB(env.DataDBConn, query, args...)
 			if err != nil {
 				http.Error(w, err.Error(), 500)
@@ -944,7 +944,7 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 				data["updated"] = time.Now().Unix()
 			}
 			for k, v := range data {
-				cols = append(cols, k)
+				cols = append(cols, "`"+k+"`")
 				placeholders = append(placeholders, "?")
 				switch val := v.(type) {
 				case map[string]any, []any:
@@ -953,7 +953,7 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 					args = append(args, v)
 				}
 			}
-			q := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", collection, strings.Join(cols, ","), strings.Join(placeholders, ","))
+			q := fmt.Sprintf("INSERT INTO `%s` (%s) VALUES (%s)", collection, strings.Join(cols, ","), strings.Join(placeholders, ","))
 			if _, err := env.DataDBConn.Exec(q, args...); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
@@ -1004,7 +1004,7 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 				}
 				idList := strings.Split(ids, ",")
 				for _, idStr := range idList {
-					env.DataDBConn.Exec("DELETE FROM "+collection+" WHERE id = ?", idStr)
+					env.DataDBConn.Exec("DELETE FROM `"+collection+"` WHERE id = ?", idStr)
 				}
 				w.Write([]byte(`{"success":true}`))
 				return
@@ -1013,7 +1013,7 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 				http.Error(w, "Forbidden", 403)
 				return
 			}
-			env.DataDBConn.Exec("DROP TABLE " + collection)
+			env.DataDBConn.Exec("DROP TABLE `" + collection + "`")
 			env.ConfigDBConn.Exec("DELETE FROM _schema WHERE collection_id = (SELECT id FROM _collections WHERE name = ?)", collection)
 			env.ConfigDBConn.Exec("DELETE FROM _collections WHERE name = ?", collection)
 			env.SchemaCache.Delete(collection)
@@ -1037,7 +1037,7 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 				newIDStr := fmt.Sprintf("%v", newID)
 				if newIDStr != id {
 					var exists int
-					env.DataDBConn.QueryRow("SELECT COUNT(*) FROM "+collection+" WHERE id = ?", newIDStr).Scan(&exists)
+					env.DataDBConn.QueryRow("SELECT COUNT(*) FROM `"+collection+"` WHERE id = ?", newIDStr).Scan(&exists)
 					if exists > 0 {
 						http.Error(w, `{"error":"ID already exists"}`, 409)
 						return
@@ -1050,7 +1050,7 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 				if k == "created" {
 					continue
 				}
-				cols = append(cols, k+" = ?")
+				cols = append(cols, "`"+k+"` = ?")
 				switch val := v.(type) {
 				case map[string]any, []any:
 					args = append(args, formatLuaTable(val))
@@ -1059,7 +1059,7 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 				}
 			}
 			args = append(args, id)
-			q := fmt.Sprintf("UPDATE %s SET %s WHERE id = ?", collection, strings.Join(cols, ","))
+			q := fmt.Sprintf("UPDATE `%s` SET %s WHERE id = ?", collection, strings.Join(cols, ","))
 			if _, err := env.DataDBConn.Exec(q, args...); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
@@ -1072,7 +1072,7 @@ func (env *Environment) handleAdminData(w http.ResponseWriter, r *http.Request) 
 				http.Error(w, "Forbidden", 403)
 				return
 			}
-			env.DataDBConn.Exec("DELETE FROM "+collection+" WHERE id = ?", id)
+			env.DataDBConn.Exec("DELETE FROM `"+collection+"` WHERE id = ?", id)
 			w.Write([]byte(`{"success":true}`))
 			return
 		}

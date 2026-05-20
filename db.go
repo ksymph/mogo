@@ -81,9 +81,9 @@ func (env *Environment) bootstrapDataDB() {
 			case "bool":
 				sqlType = "BOOLEAN"
 			}
-			sqlFields = append(sqlFields, fmt.Sprintf("%s %s", field.Name, sqlType))
+			sqlFields = append(sqlFields, fmt.Sprintf("`%s` %s", field.Name, sqlType))
 		}
-		createSQL := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (%s)", cName, strings.Join(sqlFields, ", "))
+		createSQL := fmt.Sprintf("CREATE TABLE IF NOT EXISTS `%s` (%s)", cName, strings.Join(sqlFields, ", "))
 		_, err := env.DataDBConn.Exec(createSQL)
 		if err != nil {
 			log.Printf("Failed to bootstrap table %s: %v", cName, err)
@@ -336,7 +336,7 @@ func (env *Environment) expandRecord(colName string, row map[string]any, cache m
 					expandedItem = existing
 				}
 			} else {
-				relRows, err := queryDB(env.DataDBConn, fmt.Sprintf("SELECT * FROM %s WHERE id = ?", sf.Type), relId)
+				relRows, err := queryDB(env.DataDBConn, fmt.Sprintf("SELECT * FROM `%s` WHERE id = ?", sf.Type), relId)
 				if err == nil && len(relRows) > 0 {
 					relExpandedAny := env.expandRecord(sf.Type, relRows[0], cache, activePath, colSet, forLua, L)
 					expandedItem = relExpandedAny
@@ -468,9 +468,9 @@ func (env *Environment) createCollectionInDB(name string, schema []SchemaField, 
 		}
 		env.ConfigDBConn.Exec("INSERT INTO _schema (collection_id, field, type, required, position) VALUES (?, ?, ?, ?, ?)",
 			collectionID, field.Name, field.Type, field.Required, i)
-		sqlFields = append(sqlFields, fmt.Sprintf("%s %s", field.Name, sqlType))
+		sqlFields = append(sqlFields, fmt.Sprintf("`%s` %s", field.Name, sqlType))
 	}
-	createSQL := fmt.Sprintf("CREATE TABLE %s (%s)", name, strings.Join(sqlFields, ", "))
+	createSQL := fmt.Sprintf("CREATE TABLE `%s` (%s)", name, strings.Join(sqlFields, ", "))
 	_, err = env.DataDBConn.Exec(createSQL)
 	env.SchemaCache.Delete(name)
 	return err
@@ -512,7 +512,7 @@ func (env *Environment) updateCollectionInDB(name string, schema []SchemaField) 
 
 	// Perform renames
 	for oldName, newName := range renames {
-		env.DataDBConn.Exec(fmt.Sprintf("ALTER TABLE %s RENAME COLUMN %s TO %s", name, oldName, newName))
+		env.DataDBConn.Exec(fmt.Sprintf("ALTER TABLE `%s` RENAME COLUMN `%s` TO `%s`", name, oldName, newName))
 		env.ConfigDBConn.Exec("UPDATE _schema SET field = ? WHERE collection_id = ? AND field = ?", newName, collectionID, oldName)
 		delete(existingFields, oldName)
 		existingFields[newName] = SchemaField{Name: newName, Type: renames[oldName]} // Update existingFields to reflect rename
@@ -535,7 +535,7 @@ func (env *Environment) updateCollectionInDB(name string, schema []SchemaField) 
 					sqlType = "INTEGER"
 				}
 			}
-			env.DataDBConn.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", name, field.Name, sqlType))
+			env.DataDBConn.Exec(fmt.Sprintf("ALTER TABLE `%s` ADD COLUMN `%s` %s", name, field.Name, sqlType))
 			env.ConfigDBConn.Exec("INSERT INTO _schema (collection_id, field, type, required, position) VALUES (?, ?, ?, ?, ?)",
 				collectionID, field.Name, field.Type, field.Required, i)
 		} else {
@@ -545,7 +545,7 @@ func (env *Environment) updateCollectionInDB(name string, schema []SchemaField) 
 
 	for existingField := range existingFields {
 		if !newFields[existingField] {
-			env.DataDBConn.Exec(fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", name, existingField))
+			env.DataDBConn.Exec(fmt.Sprintf("ALTER TABLE `%s` DROP COLUMN `%s`", name, existingField))
 			env.ConfigDBConn.Exec("DELETE FROM _schema WHERE collection_id = ? AND field = ?", collectionID, existingField)
 		}
 	}
@@ -569,7 +569,7 @@ func (env *Environment) renameCollectionInDB(oldName, newName string) error {
 	}
 
 	// Rename table
-	_, err = env.DataDBConn.Exec(fmt.Sprintf("ALTER TABLE %s RENAME TO %s", oldName, newName))
+	_, err = env.DataDBConn.Exec(fmt.Sprintf("ALTER TABLE `%s` RENAME TO `%s`", oldName, newName))
 	if err != nil {
 		return err
 	}

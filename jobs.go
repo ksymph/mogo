@@ -85,18 +85,19 @@ s.NewJob(
 				dur := time.Duration(parseIntField(meta["d"]))*24*time.Hour +
 					time.Duration(parseIntField(meta["h"]))*time.Hour +
 					time.Duration(parseIntField(meta["m"]))*time.Minute +
-					time.Duration(parseIntField(meta["s"]))*time.Second
+					time.Duration(parseIntField(meta["s"]))*time.Second +
+					time.Duration(parseIntField(meta["ms"]))*time.Millisecond
 				if dur <= 0 {
 					dur = time.Minute
 				}
 				jobDef = gocron.DurationJob(dur)
 			} else {
-				jobDef = gocron.CronJob(schedule, true)
-			}
+			jobDef = gocron.CronJob(schedule, true)
+		}
 
-			opts := []gocron.JobOption{
-				gocron.WithTags(strconv.Itoa(id)),
-			}
+		opts := []gocron.JobOption{
+			gocron.WithTags(strconv.Itoa(id)),
+		}
 			if preventOverlap == 1 {
 				opts = append(opts, gocron.WithSingletonMode(gocron.LimitModeReschedule))
 			}
@@ -139,7 +140,8 @@ s.NewJob(
 			dur := time.Duration(parseIntField(meta["d"]))*24*time.Hour +
 				time.Duration(parseIntField(meta["h"]))*time.Hour +
 				time.Duration(parseIntField(meta["m"]))*time.Minute +
-				time.Duration(parseIntField(meta["s"]))*time.Second
+				time.Duration(parseIntField(meta["s"]))*time.Second +
+				time.Duration(parseIntField(meta["ms"]))*time.Millisecond
 			if dur <= 0 {
 				dur = time.Minute
 			}

@@ -1179,10 +1179,10 @@ async function loadAppSettings() {
   const s = state.settings;
 
   let mode = 'disabled';
-  let bkpD = '', bkpH = '', bkpM = '', bkpS = '';
+  let bkpD = '', bkpH = '', bkpM = '', bkpS = '', bkpMS = '';
   if (s.backup_sched && s.backup_sched !== 'Disabled') {
     if (s.backup_sched_meta) {
-      try { let meta = JSON.parse(s.backup_sched_meta); mode = meta.mode; bkpD = meta.d || ''; bkpH = meta.h || ''; bkpM = meta.m || ''; bkpS = meta.s || ''; } catch (e) { mode = 'raw'; }
+      try { let meta = JSON.parse(s.backup_sched_meta); mode = meta.mode; bkpD = meta.d || ''; bkpH = meta.h || ''; bkpM = meta.m || ''; bkpS = meta.s || ''; bkpMS = meta.ms || ''; } catch (e) { mode = 'raw'; }
     } else mode = 'raw';
   }
 
@@ -1238,6 +1238,7 @@ async function loadAppSettings() {
             <div class="form-field"><input type="number" id="s-bkp-h" min="1" value="${bkpH}" placeholder=" "><label>Hours</label></div>
             <div class="form-field"><input type="number" id="s-bkp-m" min="1" value="${bkpM}" placeholder=" "><label>Mins</label></div>
             <div class="form-field"><input type="number" id="s-bkp-s" min="1" value="${bkpS}" placeholder=" "><label>Secs</label></div>
+            <div class="form-field"><input type="number" id="s-bkp-ms" min="1" value="${bkpMS}" placeholder=" "><label>Msecs</label></div>
           </div>
         </div>
       </div>
@@ -1278,6 +1279,8 @@ async function loadAppSettings() {
         if (h) meta.h = h;
         if (m) meta.m = m;
         if (s) meta.s = s;
+        let ms = document.getElementById('s-bkp-ms').value;
+        if (ms) meta.ms = ms;
         schedule = "Interval";
       }
 
@@ -2258,6 +2261,7 @@ async function deleteFile(base, path) {
               if (meta.h) parts.push(meta.h + 'h');
               if (meta.m) parts.push(meta.m + 'm');
               if (meta.s) parts.push(meta.s + 's');
+              if (meta.ms) parts.push(meta.ms + 'ms');
               if (parts.length > 0) schedText = "Every " + parts.join(' ');
             }
           } catch (e) { }
@@ -2309,7 +2313,7 @@ async function deleteFile(base, path) {
       }
       
       let isActive = id ? (j.active !== false) : true;
-      let d = meta.d || '', h = meta.h || '', m = meta.m || '', s = meta.s || '';
+      let d = meta.d || '', h = meta.h || '', m = meta.m || '', s = meta.s || '', ms = meta.ms || '';
       let preventOverlap = id ? (j.prevent_overlap === true) : false;
 
       const files = await api('/files?base=scripts') ||[];
@@ -2340,6 +2344,7 @@ async function deleteFile(base, path) {
           <div class="form-field"><input type="number" id="ci-hr" min="1" value="${h}" placeholder=" "><label>Hours</label></div>
           <div class="form-field"><input type="number" id="ci-min" min="1" value="${m}" placeholder=" "><label>Minutes</label></div>
           <div class="form-field"><input type="number" id="ci-sec" min="1" value="${s}" placeholder=" "><label>Seconds</label></div>
+          <div class="form-field"><input type="number" id="ci-ms" min="1" value="${ms}" placeholder=" "><label>Milliseconds</label></div>
         </div>
       </div>
 
@@ -2381,6 +2386,8 @@ async function deleteFile(base, path) {
         if (h) meta.h = h;
         if (m) meta.m = m;
         if (s) meta.s = s;
+        let ms = document.getElementById('ci-ms').value;
+        if (ms) meta.ms = ms;
 
         schedule = "Interval";
       }
