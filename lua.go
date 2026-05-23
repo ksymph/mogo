@@ -681,6 +681,15 @@ func (env *Environment) createLuaState() *lua.LState {
 	env.injectDB(L)
 	env.injectMgoAPI(L)
 
+	nullUD := L.NewUserData()
+	nullMT := L.NewTable()
+	nullMT.RawSetString("__tostring", L.NewFunction(func(L *lua.LState) int {
+		L.Push(lua.LString("NULL"))
+		return 1
+	}))
+	L.SetMetatable(nullUD, nullMT)
+	L.SetGlobal("NULL", nullUD)
+
 	return L
 }
 

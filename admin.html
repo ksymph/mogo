@@ -1987,6 +1987,7 @@ function showApiDocs() {
             <li><b>db.&#60;col&#62;:get(<i>[query]</i>, <i>[limit]</i>, <i>[sort_by]</i>)</b> - Returns array of matching records, ascending by ID by default. Use <i>limit = 0</i> for no limit. Negative limit to reverse order. Relational fields expand automatically into nested tables.</li>
             <li><b>db.&#60;col&#62;:insert(data)</b> - Inserts a row (auto-generates <i>id</i>, <i>created</i>, <i>updated</i>) and returns the new record's ID.</li>
             <li><b>db.&#60;col&#62;:update(query, updates)</b> - Updates matching records. Processes sequentially; returns an array of result objects: <i>{{id=1, result=true}, {id=2, result=false, err="..."}}</i>.</li>
+            <li><b>NULL</b> <i>(global sentinel)</i> - Explicitly nulls out a field: <i>{ session_token = NULL }</i> writes SQL NULL in insert/update data tables. A plain <i>nil</i> in a table constructor is the same as omitting the key, so it cannot clear a field.</li>
             <li><b>db.&#60;col&#62;:delete(query)</b> - Deletes matching records. Processes sequentially; returns an array of result objects.</li>
             <li><b>db("SELECT * FROM tbl WHERE id = ?", id)</b> - Execute raw SQL. Returns a table for SELECT/PRAGMA, or <i>boolean, rowsAffected</i> for mutations. <b>Bypasses all middleware hooks.</b></li>
         </ul>

@@ -31,7 +31,7 @@ func (env *Environment) initDB() {
 	}
 
 	dataPath := filepath.Join(env.DataPath, "data.sqlite")
-	env.DataDBConn, err = sql.Open("sqlite", dataPath)
+	env.DataDBConn, err = sql.Open("sqlite", dataPath+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		log.Fatalf("Failed to open Data database: %v", err)
 	}

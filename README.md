@@ -105,9 +105,12 @@ Mogo has a simple CRUD API for collections. Relations are automatically resolved
     *  `local user = db.users:get({ last_name = "Doe" }, 1 )[1]`
 *   **`db.<collection>:insert(data)`**: Inserts a row and returns the new record; `id`, `created`, and `updated` are auto-generated; returns new item id
     *   `uid = db.users:insert({ firstName = "Alice", age = 30 })`
-*   **`db.<collection>:update(query, { foo = "bar", baz = nil })`**: Updates items matching the query. Because updates are processed per-item (to support middleware hooks), this returns an array of result objects indicating the success/failure of each affected record: `{{id = 1, result = true}, {id = 2, result = false, err = "..."}}`.
+*   **`db.<collection>:update(query, { foo = "bar", baz = NULL })`**: Updates items matching the query. Because updates are processed per-item (to support middleware hooks), this returns an array of result objects indicating the success/failure of each affected record: `{{id = 1, result = true}, {id = 2, result = false, err = "..."}}`.
     *   `results = db.users:update({ role = "user" }, { active = false })`
+    *   `db.users:update({ id = 1 }, { session_token = NULL }) -- clear a field back to NULL`
 *   **`db.<collection>:delete(query)`**: Deletes matching records. Like updates, this processes per-item and returns an array of result objects.
+*   **`NULL`** *(global sentinel)*: Explicitly nulls out a field. In `insert`/`update` data tables, `{ field = NULL }` writes SQL `NULL` to that column; a plain Lua `nil` in a table constructor is identical to omitting the key, so it cannot clear a field.
+    *   `db.users:update({ id = 1 }, { session_token = NULL })`
 *   **Raw SQL**: Call the `db` object as a function for direct SQL queries. Returns a table of results for `SELECT`/`PRAGMA`, and `true, rowsAffected` for mutations. Note that system SQL tables are: `_api_keys`, `_collections`, `_cron_jobs`, `_schema`. **Raw SQL queries bypass collection middleware.**
     *   `local users = db("SELECT * FROM users WHERE age > ?", 18)`
 *   **Relations**: Relational fields are automatically expanded as nested tables
